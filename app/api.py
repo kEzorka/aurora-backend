@@ -231,6 +231,21 @@ def download(job_id: str):
     )
 
 
+@app.post("/forecast/{job_id}/pin")
+def pin(job_id: str, pinned: bool = True) -> dict:
+    """Keep this forecast until it is unpinned.
+
+    For the reference runs an experiment is scored against: eviction ranks by
+    last read, and a baseline nobody has opened this week is exactly the thing
+    that must not disappear.
+    """
+    job = _svc().get(job_id)
+    if job is None:
+        raise HTTPException(404, "no such job")
+    _svc().registry.pin(job_id, pinned)
+    return {"job_id": job_id, "pinned": pinned}
+
+
 @app.get("/jobs")
 def jobs() -> list[dict]:
     return [{"job_id": j.id, "status": j.status, "progress": j.progress} for j in _svc().all()]

@@ -79,6 +79,25 @@ def main() -> None:
         assert reg.find_ready(init, 20) is None, "evicted forecast still advertised"
         print("evicted rows no longer answer lookups")
 
+        # --- a pinned reference survives even when nobody has read it
+        ref = reg.add(Job(id="fp32ref", init_time=init, steps=8))
+        ref_path = fake_forecast(root, "f_ref", 40)
+        reg.update(ref.id, status="done", output=str(ref_path),
+                   size_bytes=store_size(ref_path))
+        reg.pin(ref.id)
+        reg.update(ref.id, last_access="2020-01-01T00:00:00")  # oldest of all
+        filler = reg.add(Job(id="filler", init_time=init, steps=12))
+        filler_path = fake_forecast(root, "f_filler", 40)
+        reg.update(filler.id, status="done", output=str(filler_path),
+                   size_bytes=store_size(filler_path))
+
+        removed = reg.evict(cap_bytes=int(50 * 1024**2), low_bytes=int(10 * 1024**2))
+        assert "fp32ref" not in removed, "pinned reference was evicted"
+        assert ref_path.exists(), "pinned reference deleted from disk"
+        assert "filler" in removed, f"eviction stopped early: {removed}"
+        print(f"pinned reference survived eviction of {removed}; "
+              f"{reg.total_bytes() / 1024**2:.0f} MB left, all of it pinned")
+
         # --- the real limits, so the numbers in the config are visible here
         from app import config
         print(f"configured cap {config.DISK_CAP_BYTES / GB:.0f} GB, "

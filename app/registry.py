@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     output      TEXT,
     error       TEXT,
     size_bytes  INTEGER NOT NULL DEFAULT 0,
+    pinned      INTEGER NOT NULL DEFAULT 0,
     created     TEXT NOT NULL,
     last_access TEXT NOT NULL
 );
@@ -61,6 +62,7 @@ class Job:
     output: str | None = None
     error: str | None = None
     size_bytes: int = 0
+    pinned: bool = False
     created: dt.datetime = dt.datetime.min
     last_access: dt.datetime = dt.datetime.min
 
@@ -83,6 +85,7 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         output=row["output"],
         error=row["error"],
         size_bytes=row["size_bytes"],
+        pinned=bool(row["pinned"]),
         created=dt.datetime.fromisoformat(row["created"]),
         last_access=dt.datetime.fromisoformat(row["last_access"]),
     )
@@ -150,6 +153,18 @@ class Registry:
             )
             self._db.commit()
 
+    def pin(self, job_id: str, pinned: bool = True) -> None:
+        """Exempt a forecast from eviction.
+
+        This backend exists to measure Aurora, and a measurement needs its
+        reference to stay put. The fp32 baselines that every fp16 comparison
+        is scored against are not "recomputable in 130 s" in any useful sense:
+        recomputing them changes what the older numbers meant. Everything else
+        here is disposable; these are not, so they are marked rather than
+        trusted to stay recently-read.
+        """
+        self.update(job_id, pinned=int(pinned))
+
     def touch(self, job_id: str) -> None:
         """Record that somebody read this forecast.
 
@@ -210,7 +225,8 @@ class Registry:
 
         Only forecasts are ever deleted. The ERA5 archive is not in this table
         and must not be: it cost a CDS quota and cannot be recomputed, while
-        any forecast here can.
+        any forecast here can. Pinned rows are skipped for the same reason at
+        a smaller scale — see `pin`.
         """
         cap = cap_bytes if cap_bytes is not None else config.DISK_CAP_BYTES
         low = low_bytes if low_bytes is not None else config.DISK_LOW_BYTES
@@ -219,10 +235,15 @@ class Registry:
 
         with self._lock:
             rows = self._db.execute(
-                "SELECT * FROM jobs WHERE status = 'done' ORDER BY last_access ASC"
+                "SELECT * FROM jobs WHERE status = 'done' AND pinned = 0"
+                " ORDER BY last_access ASC"
             ).fetchall()
 
         removed: list[str] = []
+        # Counts pinned bytes too, deliberately: if the pinned references
+        # alone exceed the low mark, this deletes everything it may and stops
+        # above it. Running out of evictable data is the honest outcome there,
+        # not a reason to start deleting references.
         total = self.total_bytes()
         for row in rows:
             if total <= low:
