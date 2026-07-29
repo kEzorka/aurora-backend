@@ -36,6 +36,36 @@ ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ROOT / "bench" / "results"
 
 
+def box_state() -> dict:
+    """Who else is on the machine while this measurement is being taken.
+
+    The box is shared. Another user's three training campaigns can be holding
+    three of the four V100s and seven of the sixteen cores, and a timing taken
+    then is not comparable with one taken on an idle box — but it is not junk
+    either, as long as the conditions are recorded next to the number. This is
+    what makes a surprising result diagnosable after the fact instead of
+    unexplainable.
+    """
+    state: dict = {"load1": os.getloadavg()[0]}
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,memory.used,utilization.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=20).stdout
+        state["gpus"] = [
+            {"index": int(a), "mem_mib": int(b), "util_pct": int(c)}
+            for a, b, c in (line.split(", ") for line in out.strip().splitlines())
+        ]
+        apps = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,used_memory",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=20).stdout
+        state["compute_apps"] = len(apps.strip().splitlines()) if apps.strip() else 0
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return state
+
+
 # --------------------------------------------------------------------------
 # one case, measured in this process
 
@@ -61,6 +91,7 @@ def run_case(init: str, steps: int, variant: str, device: str, keep: bool) -> di
         "steps": steps,
         "variant": variant,
         "device": device,
+        "box_before": box_state(),
     }
 
     t0 = time.time()
@@ -118,6 +149,7 @@ def run_case(init: str, steps: int, variant: str, device: str, keep: bool) -> di
         if torch.cuda.is_available()
         else 0.0
     )
+    rec["box_after"] = box_state()
     rec["output"] = str(path)
     rec["output_mb"] = sum(f.stat().st_size for f in Path(path).rglob("*") if f.is_file()) / (1 << 20) if Path(path).is_dir() else Path(path).stat().st_size / (1 << 20)
 
