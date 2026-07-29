@@ -1,0 +1,755 @@
+[
+  {
+    "kind": "concurrency",
+    "init": "2026-04-05T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "box_before": {
+      "load1": 5.66357421875,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.10861754417419434,
+    "read_s": 1.0785586833953857,
+    "load_s": 22.34734606742859,
+    "finish_s": 3.337860107421875e-06,
+    "forward_s": [
+      3.0133163928985596,
+      2.6474192142486572,
+      2.637359380722046,
+      2.6640737056732178
+    ],
+    "to_cpu_s": [
+      0.2589719295501709,
+      0.2362825870513916,
+      0.23753046989440918,
+      0.23817157745361328
+    ],
+    "write_s": [
+      0.40059328079223633,
+      0.3707857131958008,
+      0.3746957778930664,
+      0.38768529891967773
+    ],
+    "forward_first_s": 3.0133163928985596,
+    "forward_steady_s": 2.6474192142486572,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 4.67529296875,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 3,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 3,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 3,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 1
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc1-0/forecast_20260405T0000_024h.zarr",
+    "output_mb": 744.5380849838257,
+    "concurrency": 1,
+    "batch_wall_s": 43.18858551979065
+  },
+  {
+    "kind": "concurrency",
+    "init": "2026-04-05T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "box_before": {
+      "load1": 4.4111328125,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.10917139053344727,
+    "read_s": 1.13199782371521,
+    "load_s": 26.25458788871765,
+    "finish_s": 4.291534423828125e-06,
+    "forward_s": [
+      3.0129785537719727,
+      2.6442501544952393,
+      2.652885675430298,
+      2.648397922515869
+    ],
+    "to_cpu_s": [
+      0.2616894245147705,
+      0.25119948387145996,
+      0.24354290962219238,
+      0.2441878318786621
+    ],
+    "write_s": [
+      0.4263741970062256,
+      0.40770530700683594,
+      0.40854501724243164,
+      0.4087555408477783
+    ],
+    "forward_first_s": 3.0129785537719727,
+    "forward_steady_s": 2.648397922515869,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 5.34521484375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 3,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 3,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 2
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc2-0/forecast_20260405T0000_024h.zarr",
+    "output_mb": 744.5380849838257,
+    "concurrency": 2,
+    "batch_wall_s": 47.488319396972656
+  },
+  {
+    "kind": "concurrency",
+    "init": "2026-05-01T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:1",
+    "box_before": {
+      "load1": 4.4111328125,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.12048053741455078,
+    "read_s": 1.1321015357971191,
+    "load_s": 26.29854702949524,
+    "finish_s": 4.291534423828125e-06,
+    "forward_s": [
+      3.0388245582580566,
+      2.675524950027466,
+      2.6674952507019043,
+      2.6668453216552734
+    ],
+    "to_cpu_s": [
+      0.2675001621246338,
+      0.2574479579925537,
+      0.24087119102478027,
+      0.23687958717346191
+    ],
+    "write_s": [
+      0.40088391304016113,
+      0.4095571041107178,
+      0.38411450386047363,
+      0.38579463958740234
+    ],
+    "forward_first_s": 3.0388245582580566,
+    "forward_steady_s": 2.6674952507019043,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 5.34521484375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 3,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 3,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 2
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc2-1/forecast_20260501T0000_024h.zarr",
+    "output_mb": 743.9917345046997,
+    "concurrency": 2,
+    "batch_wall_s": 47.488319396972656
+  },
+  {
+    "kind": "concurrency",
+    "init": "2026-04-05T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "box_before": {
+      "load1": 5.3173828125,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.10764145851135254,
+    "read_s": 1.2680158615112305,
+    "load_s": 37.90123772621155,
+    "finish_s": 4.291534423828125e-06,
+    "forward_s": [
+      3.0382041931152344,
+      2.643061876296997,
+      2.638275623321533,
+      2.640690326690674
+    ],
+    "to_cpu_s": [
+      0.2600986957550049,
+      0.23809123039245605,
+      0.23361849784851074,
+      0.23985815048217773
+    ],
+    "write_s": [
+      0.43230342864990234,
+      0.4021637439727783,
+      0.38894176483154297,
+      0.6285645961761475
+    ],
+    "forward_first_s": 3.0382041931152344,
+    "forward_steady_s": 2.640690326690674,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 11.5068359375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 21775,
+          "util_pct": 9
+        },
+        {
+          "index": 2,
+          "mem_mib": 21775,
+          "util_pct": 38
+        },
+        {
+          "index": 3,
+          "mem_mib": 21775,
+          "util_pct": 37
+        }
+      ],
+      "compute_apps": 4
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc4-0/forecast_20260405T0000_024h.zarr",
+    "output_mb": 744.5380849838257,
+    "concurrency": 4,
+    "batch_wall_s": 59.96317982673645
+  },
+  {
+    "kind": "concurrency",
+    "init": "2026-05-01T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:1",
+    "box_before": {
+      "load1": 5.3173828125,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.10592055320739746,
+    "read_s": 1.2326488494873047,
+    "load_s": 38.33760094642639,
+    "finish_s": 3.5762786865234375e-06,
+    "forward_s": [
+      3.051387310028076,
+      2.6594696044921875,
+      2.6669774055480957,
+      2.6595218181610107
+    ],
+    "to_cpu_s": [
+      0.3022575378417969,
+      0.24388980865478516,
+      0.23883628845214844,
+      0.24537992477416992
+    ],
+    "write_s": [
+      0.45103025436401367,
+      0.4662163257598877,
+      0.4293098449707031,
+      0.4509623050689697
+    ],
+    "forward_first_s": 3.051387310028076,
+    "forward_steady_s": 2.6595218181610107,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 11.5068359375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 21775,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 4
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc4-1/forecast_20260501T0000_024h.zarr",
+    "output_mb": 743.9917345046997,
+    "concurrency": 4,
+    "batch_wall_s": 59.96317982673645
+  },
+  {
+    "kind": "concurrency",
+    "init": "2026-06-01T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:2",
+    "box_before": {
+      "load1": 5.3173828125,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.10291647911071777,
+    "read_s": 1.1842098236083984,
+    "load_s": 38.585150718688965,
+    "finish_s": 5.0067901611328125e-06,
+    "forward_s": [
+      3.041424512863159,
+      2.6471004486083984,
+      2.6431987285614014,
+      2.6502842903137207
+    ],
+    "to_cpu_s": [
+      0.27419447898864746,
+      0.23878026008605957,
+      0.23255109786987305,
+      0.23723316192626953
+    ],
+    "write_s": [
+      0.42301177978515625,
+      0.4844653606414795,
+      0.4136805534362793,
+      0.495485782623291
+    ],
+    "forward_first_s": 3.041424512863159,
+    "forward_steady_s": 2.6471004486083984,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 11.5068359375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 21775,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 4
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc4-2/forecast_20260601T0000_024h.zarr",
+    "output_mb": 743.3697490692139,
+    "concurrency": 4,
+    "batch_wall_s": 59.96317982673645
+  },
+  {
+    "kind": "concurrency",
+    "init": "2026-06-15T12",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:3",
+    "box_before": {
+      "load1": 5.3173828125,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.10465598106384277,
+    "read_s": 1.2041962146759033,
+    "load_s": 38.57765579223633,
+    "finish_s": 3.814697265625e-06,
+    "forward_s": [
+      3.0490424633026123,
+      2.6596834659576416,
+      2.6575217247009277,
+      2.6535484790802
+    ],
+    "to_cpu_s": [
+      0.2704477310180664,
+      0.2498323917388916,
+      0.23146533966064453,
+      0.236802339553833
+    ],
+    "write_s": [
+      0.5089967250823975,
+      0.42707109451293945,
+      0.41381287574768066,
+      0.4441261291503906
+    ],
+    "forward_first_s": 3.0490424633026123,
+    "forward_steady_s": 2.6575217247009277,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 11.5068359375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 21775,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 21775,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 4
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc4-3/forecast_20260615T1200_024h.zarr",
+    "output_mb": 744.3315277099609,
+    "concurrency": 4,
+    "batch_wall_s": 59.96317982673645
+  },
+  {
+    "kind": "failed",
+    "returncode": 1,
+    "stderr_tail": "    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/aurora/model/perceiver.py\", line 243, in forward\n    latents = ln2(ff(latents)) + latents\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/normalization.py\", line 228, in forward\n    return F.layer_norm(\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/functional.py\", line 2987, in layer_norm\n    return torch.layer_norm(\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.21 GiB. GPU 0 has a total capacity of 31.73 GiB of which 2.32 GiB is free. Process 406012 has 13.91 GiB memory in use. Including non-PyTorch memory, this process has 15.50 GiB memory in use. Of the allocated memory 15.01 GiB is allocated by PyTorch, and 115.11 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  },
+  {
+    "kind": "failed",
+    "returncode": 1,
+    "stderr_tail": "    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/container.py\", line 253, in forward\n    input = module(input)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/activation.py\", line 816, in forward\n    return F.gelu(input, approximate=self.approximate)\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.21 GiB. GPU 1 has a total capacity of 31.73 GiB of which 2.32 GiB is free. Process 406013 has 15.50 GiB memory in use. Including non-PyTorch memory, this process has 13.91 GiB memory in use. Of the allocated memory 13.41 GiB is allocated by PyTorch, and 140.43 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  },
+  {
+    "kind": "failed",
+    "returncode": 1,
+    "stderr_tail": "    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/aurora/model/perceiver.py\", line 233, in forward\n    attn_out = ln1(attn(latents, x))\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/normalization.py\", line 228, in forward\n    return F.layer_norm(\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/functional.py\", line 2987, in layer_norm\n    return torch.layer_norm(\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.21 GiB. GPU 2 has a total capacity of 31.73 GiB of which 2.34 GiB is free. Including non-PyTorch memory, this process has 12.27 GiB memory in use. Process 406014 has 17.12 GiB memory in use. Of the allocated memory 11.80 GiB is allocated by PyTorch, and 105.74 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  },
+  {
+    "kind": "failed",
+    "returncode": 1,
+    "stderr_tail": "    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/container.py\", line 253, in forward\n    input = module(input)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/activation.py\", line 816, in forward\n    return F.gelu(input, approximate=self.approximate)\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.21 GiB. GPU 3 has a total capacity of 31.73 GiB of which 715.50 MiB is free. Including non-PyTorch memory, this process has 13.91 GiB memory in use. Process 406015 has 17.12 GiB memory in use. Of the allocated memory 13.41 GiB is allocated by PyTorch, and 140.43 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  },
+  {
+    "kind": "failed",
+    "returncode": 1,
+    "stderr_tail": "    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/container.py\", line 253, in forward\n    input = module(input)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/activation.py\", line 816, in forward\n    return F.gelu(input, approximate=self.approximate)\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.21 GiB. GPU 0 has a total capacity of 31.73 GiB of which 715.50 MiB is free. Including non-PyTorch memory, this process has 13.91 GiB memory in use. Process 406008 has 17.12 GiB memory in use. Of the allocated memory 13.41 GiB is allocated by PyTorch, and 140.43 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  },
+  {
+    "kind": "failed",
+    "returncode": 1,
+    "stderr_tail": "    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/aurora/model/perceiver.py\", line 243, in forward\n    latents = ln2(ff(latents)) + latents\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/normalization.py\", line 228, in forward\n    return F.layer_norm(\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/functional.py\", line 2987, in layer_norm\n    return torch.layer_norm(\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.21 GiB. GPU 1 has a total capacity of 31.73 GiB of which 755.50 MiB is free. Including non-PyTorch memory, this process has 15.50 GiB memory in use. Process 406009 has 15.50 GiB memory in use. Of the allocated memory 15.01 GiB is allocated by PyTorch, and 115.11 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  },
+  {
+    "kind": "concurrency",
+    "init": "2026-06-01T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:2",
+    "box_before": {
+      "load1": 11.2255859375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 0,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 0,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 0
+    },
+    "index_s": 0.17579245567321777,
+    "read_s": 1.4745256900787354,
+    "load_s": 61.53746008872986,
+    "finish_s": 3.5762786865234375e-06,
+    "forward_s": [
+      6.704620838165283,
+      2.6686480045318604,
+      2.652045249938965,
+      2.6591153144836426
+    ],
+    "to_cpu_s": [
+      0.2570202350616455,
+      0.24217867851257324,
+      0.24012112617492676,
+      0.23869776725769043
+    ],
+    "write_s": [
+      0.4278428554534912,
+      0.3959934711456299,
+      0.3940694332122803,
+      0.38744521141052246
+    ],
+    "forward_first_s": 6.704620838165283,
+    "forward_steady_s": 2.6591153144836426,
+    "peak_gib": 19.043463230133057,
+    "box_after": {
+      "load1": 19.0458984375,
+      "gpus": [
+        {
+          "index": 0,
+          "mem_mib": 3,
+          "util_pct": 0
+        },
+        {
+          "index": 1,
+          "mem_mib": 3,
+          "util_pct": 0
+        },
+        {
+          "index": 2,
+          "mem_mib": 22815,
+          "util_pct": 0
+        },
+        {
+          "index": 3,
+          "mem_mib": 3,
+          "util_pct": 0
+        }
+      ],
+      "compute_apps": 1
+    },
+    "output": "/home/kostya/aurora-backend/bench/scratch/conc8-6/forecast_20260601T0000_024h.zarr",
+    "output_mb": 743.3697490692139,
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  },
+  {
+    "kind": "failed",
+    "returncode": 1,
+    "stderr_tail": "    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/aurora/model/perceiver.py\", line 243, in forward\n    latents = ln2(ff(latents)) + latents\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/modules/normalization.py\", line 228, in forward\n    return F.layer_norm(\n  File \"/home/kostya/aurora-backend/.venv/lib/python3.10/site-packages/torch/nn/functional.py\", line 2987, in layer_norm\n    return torch.layer_norm(\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.21 GiB. GPU 3 has a total capacity of 31.73 GiB of which 2.32 GiB is free. Process 406011 has 13.91 GiB memory in use. Including non-PyTorch memory, this process has 15.50 GiB memory in use. Of the allocated memory 15.01 GiB is allocated by PyTorch, and 115.11 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "concurrency": 8,
+    "batch_wall_s": 87.16978526115417
+  }
+]
