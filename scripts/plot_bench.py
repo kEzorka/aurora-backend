@@ -426,8 +426,13 @@ def chart_ssh(records) -> None:
                        color=COLOR["fp16+compile"] if ok else COLOR["divergence"],
                        zorder=3)
             if not ok:
-                ax.text(idle, row - 0.22, f"rc={r['returncode']}", ha="center",
-                        va="top", color=COLOR["divergence"], fontsize=8.5)
+                # When it died matters more than that it died: the wall clock
+                # is where the timeout actually sits, and the cell's own
+                # duration is only an upper bound on it.
+                ax.text(idle, row - 0.22,
+                        f"rc={r['returncode']}\ndied at {r['wall_s']:.0f}s",
+                        ha="center", va="top", color=COLOR["divergence"],
+                        fontsize=8.5)
 
     ax.set_xscale("log")
     ax.minorticks_off()  # the log locator otherwise labels a 4x10^1 nobody asked for
