@@ -403,6 +403,49 @@ def chart_service(records) -> None:
     save(fig, "service")
 
 
+def chart_ssh(records) -> None:
+    """Which SSH connections survived being silent, with and without keepalive.
+
+    The whole diagnosis is in whether the two columns differ. A cell that dies
+    with keepalive off and lives with it on is a middlebox on the path timing
+    out an idle flow; a cell that dies in both is the server ending the
+    session, and no client option would have helped.
+    """
+    idles = sorted({r["idle_s"] for r in records})
+    kas = sorted({r["keepalive_s"] for r in records})
+    fig, ax = plt.subplots(figsize=(7.4, 3.6))
+
+    for row, ka in enumerate(kas):
+        for idle in idles:
+            cell = [r for r in records if r["idle_s"] == idle and r["keepalive_s"] == ka]
+            if not cell:
+                continue
+            r = cell[0]
+            ok = r["survived"]
+            ax.scatter(idle, row, s=260, marker="o" if ok else "X",
+                       color=COLOR["fp16+compile"] if ok else COLOR["divergence"],
+                       zorder=3)
+            if not ok:
+                ax.text(idle, row - 0.22, f"rc={r['returncode']}", ha="center",
+                        va="top", color=COLOR["divergence"], fontsize=8.5)
+
+    ax.set_xscale("log")
+    ax.minorticks_off()  # the log locator otherwise labels a 4x10^1 nobody asked for
+    ax.set_xticks(idles)
+    ax.set_xticklabels([f"{i}s" for i in idles])
+    ax.set_yticks(range(len(kas)))
+    ax.set_yticklabels(["keepalive off\n(OpenSSH default)" if ka == 0
+                        else f"ServerAliveInterval={ka}" for ka in kas])
+    ax.set_ylim(-0.6, len(kas) - 0.4)
+    ax.yaxis.grid(False)
+    ax.xaxis.grid(True, color=GRID, linewidth=0.8)
+    style(ax, "Does a silent SSH connection survive?",
+          "one connection per cell, sending nothing for the whole duration")
+    ax.set_xlabel("seconds of silence before the connection speaks again",
+                  color=MUTED, fontsize=9.5)
+    save(fig, "ssh")
+
+
 def main() -> int:
     print("charts:")
     stages = load("stages")
@@ -423,6 +466,9 @@ def main() -> int:
     if acc:
         chart_accuracy(acc)
         chart_divergence_ratio(acc)
+    ssh = load("ssh")
+    if ssh:
+        chart_ssh(ssh)
     return 0
 
 
