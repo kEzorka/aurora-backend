@@ -11,6 +11,14 @@ archive occupies uncompressed.
     .venv312/bin/python scripts/archive_to_v3.py SRC DST [--block 8]
 
 Verify afterwards with --check, which compares random slices of both stores.
+
+The target is NOT a drop-in replacement while the app is pinned to
+`zarr>=2.18,<3`. zarr-python 2.18 cannot open a store zarr-python 3 wrote: it
+looks for `.zgroup`/`.zmetadata` and reports a bare `FileNotFoundError` for a
+directory that plainly exists. Worse, `era5_store.is_zarr()` sees the v3
+`zarr.json` and returns True, so the app commits to the zarr path and dies there
+rather than falling back to NetCDF. Move the store into place in the same commit
+that lifts the pin, not before it.
 """
 
 from __future__ import annotations
@@ -110,6 +118,17 @@ def check(src: Path, dst: Path, samples: int) -> bool:
     if set(a.data_vars) != set(b.data_vars):
         print(f"FAIL variables differ: {set(a.data_vars) ^ set(b.data_vars)}")
         return False
+    # Values and coordinates are not the whole store. Units and long names are
+    # what a reader uses to know a temperature from a geopotential, and they
+    # travel in `attrs`, which is exactly what strip_v2_layout() is reaching
+    # into next door.
+    if a.attrs != b.attrs:
+        print(f"FAIL dataset attrs differ: {set(a.attrs.items()) ^ set(b.attrs.items())}")
+        return False
+    for name in sorted(a.data_vars):
+        if a[name].attrs != b[name].attrs:
+            print(f"FAIL attrs differ on {name}: {a[name].attrs} vs {b[name].attrs}")
+            return False
     fmt = zarr.open(str(dst))["t"].metadata.zarr_format
     if fmt != 3:
         print(f"FAIL target is zarr_format {fmt}, not 3")
