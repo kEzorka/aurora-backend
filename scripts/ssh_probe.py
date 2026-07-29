@@ -27,7 +27,7 @@ import json
 import os
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -74,13 +74,19 @@ def probe(idle: int, keepalive: int, delay: float) -> dict:
 def main() -> int:
     cells = [(idle, ka) for ka in KEEPALIVE for idle in IDLE_S]
     print(f"ssh probe: {len(cells)} connections, longest {max(IDLE_S)}s")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    records: list[dict] = []
     with ThreadPoolExecutor(max_workers=len(cells)) as pool:
         futures = [pool.submit(probe, idle, ka, i * 3.0)
                    for i, (idle, ka) in enumerate(cells)]
-        records = [f.result() for f in futures]
+        # Written as each cell lands, not at the end. The run takes a quarter of
+        # an hour and the short cells answer most of the question; losing them
+        # because the longest one was still in flight would be the one avoidable
+        # way to have to run this twice.
+        for f in as_completed(futures):
+            records.append(f.result())
+            OUT.write_text(json.dumps(records, indent=2))
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(records, indent=2))
     print(f"-> {OUT}")
     return 0
 
