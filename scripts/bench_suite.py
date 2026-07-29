@@ -148,11 +148,22 @@ def launch(init: str, steps: int, variant: str, device: str, out: Path) -> subpr
 
 
 def collect(procs: list[tuple[subprocess.Popen, Path]]) -> list[dict]:
+    """Gather finished cases, keeping the failures as records rather than raising.
+
+    A sweep is half an hour of GPU time. Losing all of it because case 19 hit
+    an out-of-memory — which is a result, not an accident, once the box is
+    oversubscribed — is the wrong trade. Failures come back with the last of
+    their stderr attached and the charts skip them.
+    """
     out = []
     for p, path in procs:
         _, err = p.communicate()
-        if p.returncode != 0:
-            raise SystemExit(f"case failed: {err.decode()[-2000:]}")
+        if p.returncode != 0 or not path.exists():
+            tail = err.decode(errors="replace").strip().splitlines()
+            print(f"    FAILED: {tail[-1] if tail else 'no output'}", flush=True)
+            out.append({"kind": "failed", "returncode": p.returncode,
+                        "stderr_tail": "\n".join(tail[-12:])})
+            continue
         out.append(json.loads(path.read_text()))
         path.unlink()
     return out
@@ -171,8 +182,8 @@ def sweep(args) -> list[dict]:
                 t0 = time.time()
                 p = launch(init.time, steps, variant, args.device, path)
                 rec = collect([(p, path)])[0]
-                rec["tag"] = init.tag
-                rec["wall_s"] = time.time() - t0
+                rec.update(tag=init.tag, init=init.time, steps=steps,
+                           variant=variant, wall_s=time.time() - t0)
                 records.append(rec)
     return records
 
@@ -206,7 +217,8 @@ def concurrency(args) -> list[dict]:
         for r in got:
             r["concurrency"] = n
             r["batch_wall_s"] = wall
-            r["kind"] = "concurrency"
+            if r["kind"] != "failed":
+                r["kind"] = "concurrency"
         records.extend(got)
         print(f"  n={n}  batch wall {wall:.1f}s", flush=True)
     return records

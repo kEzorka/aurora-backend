@@ -50,10 +50,20 @@ STAGE_COLOR = {
 
 
 def load(name: str):
+    """Read a result file, dropping the cases that failed.
+
+    A failed case is kept in the JSON on purpose — an out-of-memory at eight
+    concurrent requests is a finding — but it has no timings to draw, so it is
+    filtered out here rather than guarded against in every chart.
+    """
     path = RESULTS / f"{name}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    records = json.loads(path.read_text())
+    good = [r for r in records if r.get("kind") != "failed"]
+    if len(good) != len(records):
+        print(f"  ({len(records) - len(good)} failed case(s) in {name}.json, not plotted)")
+    return good
 
 
 def style(ax, title: str, subtitle: str = "") -> None:
