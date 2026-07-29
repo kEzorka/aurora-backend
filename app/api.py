@@ -42,7 +42,10 @@ app = FastAPI(title="Aurora forecast backend", lifespan=lifespan)
 
 class ForecastRequest(BaseModel):
     init_time: dt.datetime = Field(description="Forecast start, must be a 6-hourly archive timestamp")
-    steps: int = Field(default=4, ge=1, le=40, description="Number of 6 h steps to roll forward")
+    # 60 steps is 15 days. Past ten days the forecast has drifted well away from
+    # anything verifiable, but watching it come apart is itself the analysis this
+    # backend is for. The cap is disk, not skill: 60 steps is ~11 GB.
+    steps: int = Field(default=4, ge=1, le=60, description="Number of 6 h steps to roll forward")
 
 
 def _svc() -> ForecastService:
@@ -155,7 +158,7 @@ async def events(job_id: str, request: Request) -> StreamingResponse:
             now = time.monotonic()
             state = (job.status, job.progress)
             if state != last:
-                eta = round((job.steps - job.progress) * 2.65, 1)
+                eta = round((job.steps - job.progress) * config.STEP_WALL_S, 1)
                 yield _sse(
                     "progress",
                     {

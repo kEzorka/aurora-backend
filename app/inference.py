@@ -11,9 +11,12 @@ from aurora import Batch, rollout
 
 from . import config
 
-# V100 is compute capability 7.0: fp16 tensor cores yes, bf16 no. "off" keeps
-# everything in fp32, which is the safe default for a first prototype.
-AUTOCAST = os.environ.get("AURORA_AUTOCAST", "off")
+# V100 is compute capability 7.0: fp16 tensor cores yes, bf16 no. fp16 is the
+# default because this backend exists to look at Aurora quickly, not to compare
+# precisions: it is the faster path on this hardware and the one every analysis
+# run wants. Set AURORA_AUTOCAST=off for an fp32 reference when a result is
+# being checked against physics rather than explored.
+AUTOCAST = os.environ.get("AURORA_AUTOCAST", "fp16")
 
 # torch.compile pays a one-off warmup to trace and fuse the graph. Worth it for
 # a long rollout, not for a one-step job. Off by default for that reason.
