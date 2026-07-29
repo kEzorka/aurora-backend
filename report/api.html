@@ -1,0 +1,473 @@
+<title>Aurora backend: контракт API</title>
+<style>
+  :root {
+    --paper: #fbfaf7;
+    --ink: #1b1d21;
+    --muted: #6b7077;
+    --rule: #e2e0dc;
+    --card: #f4f2ed;
+    --ref: #3a5a8c;
+    --cand: #c26b3d;
+    --ok: #4d7a5c;
+    --warn: #8c3a5a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #15171b; --ink: #e7e5e0; --muted: #9aa0a8; --rule: #2b2f36;
+      --card: #1c1f24; --ref: #7ea3d6; --cand: #e0966a; --ok: #79b08c; --warn: #d980a4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #15171b; --ink: #e7e5e0; --muted: #9aa0a8; --rule: #2b2f36;
+    --card: #1c1f24; --ref: #7ea3d6; --cand: #e0966a; --ok: #79b08c; --warn: #d980a4;
+  }
+  :root[data-theme="light"] {
+    --paper: #fbfaf7; --ink: #1b1d21; --muted: #6b7077; --rule: #e2e0dc;
+    --card: #f4f2ed; --ref: #3a5a8c; --cand: #c26b3d; --ok: #4d7a5c; --warn: #8c3a5a;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.62 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    margin: 0;
+    padding: 0 20px 96px;
+  }
+  main { max-width: 46rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1.1rem; }
+  h1, h2, h3 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    text-wrap: balance;
+    margin: 0;
+    font-weight: 600;
+  }
+  h1 { font-size: 2.05rem; line-height: 1.18; letter-spacing: -0.01em; margin-top: 3.4rem; }
+  h2 { font-size: 1.4rem; margin-top: 2.6rem; }
+  h3 { font-size: 1.06rem; margin-top: 1.6rem; }
+  p, li { margin: 0; }
+  ul, ol { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  a { color: var(--ref); }
+  code, .num {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.92em;
+  }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .lede { color: var(--muted); font-size: 1.05rem; }
+
+  .verdict {
+    background: var(--card);
+    border-left: 3px solid var(--ok);
+    padding: 1.1rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .verdict.warn { border-left-color: var(--warn); }
+  .verdict .eyebrow { color: var(--ok); }
+  .verdict.warn .eyebrow { color: var(--warn); }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .metric { background: var(--paper); padding: 0.8rem 0.9rem; display: flex; flex-direction: column; gap: 0.15rem; }
+  .metric b {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.45rem;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+  .metric span { color: var(--muted); font-size: 0.82rem; }
+
+  pre.code {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.83rem;
+    line-height: 1.5;
+    margin: 0;
+  }
+  pre.code .c { color: var(--muted); }
+  .method {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.86rem;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--ref);
+    padding: 0.5rem 0.8rem;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .method b { color: var(--ref); }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.9rem; min-width: 32rem; width: 100%; }
+  th, td { text-align: left; padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+  td.num, th.num { text-align: right; font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .good { color: var(--ok); }
+  .bad { color: var(--warn); }
+  .req td:first-child { font-family: ui-monospace, Menlo, monospace; font-size: 0.85em; white-space: nowrap; }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 2.6rem 0 0; }
+  .foot { color: var(--muted); font-size: 0.85rem; }
+  figure { margin: 1.2rem 0 0; display: flex; flex-direction: column; gap: 0.55rem; }
+  figcaption { color: var(--muted); font-size: 0.87rem; }
+  pre.mermaid { background: transparent; text-align: center; }
+</style>
+
+<main>
+  <header>
+    <p class="eyebrow">Aurora backend · спецификация · 29 июля 2026</p>
+    <h1>Что мы принимаем, что возвращаем и почему это быстро</h1>
+    <p class="lede">Три вопроса связаны в один: асинхронность, форма запросов и раскладка данных на
+      диске. Ответ на первый определяет второй, второй определяет третий. Все числа здесь —
+      из замеров на 4×V100, а не оценки.</p>
+  </header>
+
+  <h2>1. Асинхронность: одна поправка к постановке</h2>
+
+  <div class="verdict warn">
+    <p class="eyebrow">Поправка</p>
+    <p>«Максимизировать число пользователей и уменьшить время ответа» — <b>это две разные задачи,
+      и асинхронность решает только первую</b>. Асинхронность не ускоряет счёт на GPU ни на процент.
+      Шаг прогноза — <span class="num">2,65 с</span>, он занимает карту целиком, и никакой
+      <code>async</code> его не делит.</p>
+  </div>
+
+  <p>Разложим по полочкам, что чем лечится. Числа — из тёплого запроса к сервису
+    (<span class="num">15,8 с</span> на 4 шага, модель уже в памяти карты).</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Проблема</th><th>Чем лечится</th><th class="num">Потолок выигрыша</th></tr></thead>
+      <tbody>
+        <tr><td>HTTP-поток блокируется на время счёта</td><td>очередь + опрос статуса</td><td class="num good">уже сделано</td></tr>
+        <tr><td>Чтение архива и запись результата стоят в очереди со счётом</td><td>async I/O, перекрытие стадий</td><td class="num">2,8 с из 15,8 = 18%</td></tr>
+        <tr><td>Один пользователь ждёт 15,8 с</td><td><b>предпосчёт</b>: запрос превращается в чтение</td><td class="num good">15,8 с → миллисекунды</td></tr>
+        <tr><td>Четверо пользователей одновременно</td><td>4 воркера на 4 карты</td><td class="num good">без замедления, замерено</td></tr>
+        <tr><td>Восемь одновременно</td><td>очередь перед воркерами</td><td class="num bad">без очереди — OOM у 7 из 8</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>То есть асинхронность даёт максимум <b>18%</b> — это стадии <code>read</code>
+    (<span class="num">1,2 с</span>) и <code>write</code> (<span class="num">1,6 с</span>), которые
+    можно перекрыть счётом следующего запроса. Остальные <span class="num">13 с</span> — forward,
+    и он последователен по определению.</p>
+
+  <p>Настоящий ответ на «уменьшить время ответа» другой, и он же снимает противоречие, о котором
+    говорил ментор. <b>Погодный API почти никогда не считает прогноз в момент запроса.</b> Новые
+    данные анализа приходят раз в 6 часов; по ним считается один прогон на 10 суток вперёд и
+    пишется в хранилище. Запрос пользователя после этого — <b>чтение с диска</b>. Инференс
+    становится фоновым производителем, а не обработчиком запросов.</p>
+
+  <div class="metrics">
+    <div class="metric"><b>2,65 с</b><span>шаг forward, не делится</span></div>
+    <div class="metric"><b>18%</b><span>потолок от async I/O</span></div>
+    <div class="metric"><b>4</b><span>пользователей = карт</span></div>
+    <div class="metric"><b>~0 мс</b><span>если прогноз уже посчитан</span></div>
+  </div>
+
+  <p>Тогда оба требования выполняются одновременно, потому что они перестают конкурировать:
+    время ответа определяется скоростью чтения, а число одновременных пользователей —
+    пропускной способностью диска и сети, а не количеством карт. Карты нужны ровно четырём
+    прогонам в сутки.</p>
+
+  <h2>2. Архитектура: производитель и читатель — это разные вещи</h2>
+
+  <figure>
+    <pre class="mermaid">
+flowchart TB
+  CDS["CDS / ERA5<br/>новый анализ каждые 6 ч"] --> ARCH[("Архив zarr<br/>50 ГБ, холодный")]
+  ARCH --> SCHED["Планировщик<br/>по расписанию, не по запросу"]
+  SCHED --> W["4 воркера, по одному на карту<br/>2,65 с/шаг · 40 шагов = 10 суток"]
+  W --> FC[("Прогнозы zarr<br/>горячий слой")]
+  ARCH --> API
+  FC --> API["API: только чтение<br/>async, без GPU"]
+  API --> U(["Пользователь"])
+  U -. "нестандартный init" .-> Q["Очередь заданий"]
+  Q -.-> W
+    </pre>
+    <figcaption>Сплошные стрелки — путь по расписанию, и он покрывает почти все запросы.
+      Пунктир — редкий случай: пользователь просит прогноз от момента, которого нет в кэше.
+      Только этот путь занимает карту и только он отвечает <code>202</code> вместо данных.</figcaption>
+  </figure>
+
+  <p>Практическое следствие для кода: <b>процесс API и процесс инференса — разные процессы</b>.
+    Сейчас в <code>app/jobs.py</code> это один процесс с фоновым потоком, и для прототипа так
+    правильно. Но воркер держит <span class="num">19 GiB</span> на карте и падает по OOM при
+    перегрузке — API при этом падать не должен.</p>
+
+  <h2>3. Контракт: два типа запросов</h2>
+
+  <p>Оба возвращают одно и то же по форме, различаются только тем, откуда взяты данные:
+    <b>история</b> — из архива анализа, <b>прогноз</b> — из посчитанного прогона. Общее у них:
+    список переменных, область и формат ответа.</p>
+
+  <h3>3.1 Общие параметры</h3>
+
+  <div class="scroll">
+    <table class="req">
+      <thead><tr><th>Параметр</th><th>Значение</th><th>По умолчанию</th></tr></thead>
+      <tbody>
+        <tr><td>variables</td><td>список через запятую: <code>t2m,msl,u10,v10</code>; на уровнях — <code>t@850,z@500</code></td><td class="bad">обязателен</td></tr>
+        <tr><td>lat, lon</td><td>точка: <code>lat=55.75&amp;lon=37.62</code>. Ближайший узел сетки 0,25°</td><td rowspan="3">одно из трёх обязательно</td></tr>
+        <tr><td>bbox</td><td><code>bbox=30,50,60,70</code> — запад,юг,восток,север</td></tr>
+        <tr><td>area</td><td><code>area=global</code> — всё поле 721×1440</td></tr>
+        <tr><td>format</td><td><code>json</code> · <code>netcdf</code> · <code>zarr</code></td><td><code>json</code> для точки, <code>netcdf</code> для области</td></tr>
+        <tr><td>units</td><td><code>si</code> (K, Pa, m/s) · <code>human</code> (°C, гПа, м/с)</td><td><code>si</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="foot">Правило про <code>variables</code>: параметр обязателен намеренно. Полный набор —
+    69 каналов; запрос без явного списка вернул бы <span class="num">4,15 МБ</span> на каждый шаг
+    вместо <span class="num">1,4 КБ</span>. Умолчание «всё» здесь стоит в миллион раз дороже
+    умолчания «ничего».</p>
+
+  <h3>3.2 История</h3>
+
+  <p class="method"><b>GET</b> /v1/history?variables=t2m&amp;start=2026-05-01T00&amp;end=2026-05-07T00&amp;lat=55.75&amp;lon=37.62</p>
+
+  <p>Период целиком в прошлом и уже лежит в архиве. Никакого GPU, никакой очереди — только чтение.
+    <code>start</code> и <code>end</code> включительно, шаг сетки времени — 6 часов
+    (<code>00, 06, 12, 18</code> UTC); <code>step=12h</code> прореживает, промежуточные моменты
+    <b>не интерполируются</b>.</p>
+
+  <pre class="code">{
+  <span class="c">// ответ: 200 OK</span>
+  "kind": "history",
+  "source": "ERA5 reanalysis",
+  "point": {"lat": 55.75, "lon": 37.5},     <span class="c">// узел сетки, а не запрошенная точка</span>
+  "times": ["2026-05-01T00:00Z", "2026-05-01T06:00Z", "..."],
+  "variables": {
+    "t2m": {"units": "K", "values": [279.4, 281.1, ...]}
+  },
+  "meta": {"grid": "0.25deg", "requested": {"lat": 55.75, "lon": 37.62}}
+}</pre>
+
+  <h3>3.3 Прогноз — две формы адресации</h3>
+
+  <p>Ментор прав, что нужны обе, и они отвечают на разные вопросы. Первая — «что модель, запущенная
+    тогда-то, говорит про через столько-то часов»; это форма для сравнения прогонов и для оценки
+    качества. Вторая — «какая погода будет в четверг»; это форма для пользователя, которому всё
+    равно, откуда взялся ответ.</p>
+
+  <p class="method"><b>GET</b> /v1/forecast?variables=t2m&amp;init_time=2026-05-01T00&amp;lead_time=24h&amp;lat=55.75&amp;lon=37.62</p>
+  <p class="method"><b>GET</b> /v1/forecast?variables=t2m&amp;valid_time=2026-05-02T00&amp;lat=55.75&amp;lon=37.62</p>
+
+  <div class="scroll">
+    <table class="req">
+      <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
+      <tbody>
+        <tr><td>init_time</td><td>момент запуска модели, кратен 6 ч</td></tr>
+        <tr><td>lead_time</td><td><code>24h</code> · <code>PT24H</code> · <code>0-240h</code> для диапазона. Кратно 6 ч, максимум 240 ч</td></tr>
+        <tr><td>valid_time</td><td>момент, на который нужен прогноз. Взаимоисключающ с парой выше</td></tr>
+        <tr><td>init_policy</td><td>как выбрать прогон для <code>valid_time</code>: <code>latest</code> (по умолчанию) · <code>nearest</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="verdict">
+    <p class="eyebrow">Правило разрешения — его надо зафиксировать в документации, а не оставить на усмотрение</p>
+    <p>При <code>valid_time</code> без <code>init_time</code> берётся <b>самый свежий готовый прогон,
+      у которого <code>init_time ≤ valid_time</code></b> и есть шаг ровно на <code>valid_time</code>.
+      Ответ <b>всегда</b> сообщает, какой прогон был выбран: без этого клиент не сможет ни
+      воспроизвести запрос, ни понять, почему ответ изменился между двумя вызовами.</p>
+  </div>
+
+  <pre class="code">{
+  <span class="c">// ответ: 200 OK</span>
+  "kind": "forecast",
+  "init_time": "2026-05-01T18:00Z",   <span class="c">// выбран сервером по valid_time</span>
+  "lead_hours": 6,                    <span class="c">// valid_time - init_time</span>
+  "valid_time": "2026-05-02T00:00Z",
+  "model": "AuroraPretrained",
+  "point": {"lat": 55.75, "lon": 37.5},
+  "variables": {"t2m": {"units": "K", "values": [281.9]}},
+  "meta": {"init_policy": "latest", "produced_at": "2026-05-01T18:41Z"}
+}</pre>
+
+  <h3>3.4 Промах кэша: 200 против 202</h3>
+
+  <p>Если прогон с нужным <code>init_time</code> не посчитан, вернуть пустой ответ нельзя, а ждать
+    15,8 с внутри HTTP-запроса — плохо. Поэтому у ручки два успешных исхода, и клиент должен уметь
+    различать их по коду:</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th class="num">Код</th><th>Смысл</th><th>Тело</th></tr></thead>
+      <tbody>
+        <tr><td class="num good">200</td><td>прогноз готов</td><td>данные</td></tr>
+        <tr><td class="num">202</td><td>поставлен в очередь на счёт</td><td><code>{"job_id": "...", "eta_s": 16, "poll": "/v1/jobs/..."}</code></td></tr>
+        <tr><td class="num bad">400</td><td>несовместимые параметры (<code>valid_time</code> вместе с <code>lead_time</code>; <code>lead_time</code> не кратен 6 ч)</td><td>что именно не так</td></tr>
+        <tr><td class="num bad">404</td><td>переменной нет в модели</td><td>список доступных</td></tr>
+        <tr><td class="num bad">416</td><td>дата вне покрытия архива (<code>2026-04-01 … 2026-06-30</code>) или <code>lead_time &gt; 240 ч</code></td><td>границы покрытия</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><code>eta_s</code> — не выдумка: <span class="num">2,65 с</span> на шаг плюс глубина очереди,
+    оба числа известны сервису точно.</p>
+
+  <h3>3.5 Задания</h3>
+
+  <p class="method"><b>POST</b> /v1/forecast/jobs · <b>GET</b> /v1/jobs/{id} · <b>GET</b> /v1/jobs/{id}/data</p>
+
+  <pre class="code"><span class="c">// POST /v1/forecast/jobs</span>
+{"init_time": "2026-05-01T00", "lead_hours": 240, "variables": ["t2m", "msl"]}
+
+<span class="c">// GET /v1/jobs/{id}</span>
+{"job_id": "f3a1", "status": "running",   <span class="c">// queued | running | done | failed</span>
+ "progress": {"done": 12, "total": 40}, "eta_s": 74,
+ "result": null, "error": null}</pre>
+
+  <h3>3.6 Метаданные</h3>
+
+  <p class="method"><b>GET</b> /v1/meta</p>
+
+  <p>Одна ручка, отвечающая на вопрос «а что у вас вообще есть»: покрытие архива, список переменных
+    и уровней, шаг сетки, время самого свежего готового прогона. Без неё клиент вынужден узнавать
+    границы через ошибки <code>416</code>.</p>
+
+  <h3>3.7 Что уже есть в коде, а что надо дописать</h3>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Пункт контракта</th><th>Состояние</th></tr></thead>
+      <tbody>
+        <tr><td>Очередь и опрос статуса (<code>POST /forecast</code>, <code>GET /forecast/{id}</code>)</td><td class="good">есть, <code>app/jobs.py</code></td></tr>
+        <tr><td>Выдача результата файлом</td><td class="good">есть, <code>/forecast/{id}/download</code></td></tr>
+        <tr><td>Выбор переменных</td><td class="bad">нет — считаются и пишутся все 69 каналов</td></tr>
+        <tr><td>Выбор точки / bbox</td><td class="bad">нет — отдаётся весь файл</td></tr>
+        <tr><td><code>lead_time</code> вместо <code>steps</code></td><td class="bad">нет — <code>steps</code> это шаги по 6 ч</td></tr>
+        <tr><td>Адресация по <code>valid_time</code></td><td class="bad">нет</td></tr>
+        <tr><td>История из архива</td><td class="bad">нет ручки, но <code>ERA5Store</code> уже умеет всё нужное</td></tr>
+        <tr><td>Предпосчёт по расписанию</td><td class="bad">нет</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>4. Чанки: почему это не деталь реализации</h2>
+
+  <div class="verdict warn">
+    <p class="eyebrow">Замерено, а не предположено</p>
+    <p>Запрос «температура в одной точке за весь архив» сейчас читает
+      <span class="num">1442 МБ</span>, чтобы вернуть <span class="num">1,4 КБ</span>. Коэффициент
+      лишнего — <b>около миллиона</b>. Это не медленный диск и не плохой код: это форма чанка,
+      не совпадающая с формой запроса.</p>
+  </div>
+
+  <p>Чанк — минимальная единица чтения. Прочитать половину чанка нельзя: он лежит сжатым, его
+    распаковывают целиком. Сейчас архив нарезан <b>по картам</b>: чанк <code>t2m</code> — это
+    <code>(1 момент, 721, 1440)</code> = <span class="num">4,15 МБ</span>. Для модели это идеально:
+    ей нужна карта целиком, и она получает её одним чтением. Для точки — катастрофа: чтобы собрать
+    364 значения в одной точке, нужно распаковать 364 чанка по 4,15 МБ.</p>
+
+  <p><b>Правило: форма чанка должна повторять форму запроса.</b> Два разных вида запросов —
+    два разных правильных ответа, и одна раскладка не может быть обоими сразу.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Раскладка</th><th>Чанк</th><th class="num">Размер</th><th>Карта целиком</th><th>Ряд в точке</th></tr></thead>
+      <tbody>
+        <tr><td>по картам <span class="foot">(сейчас)</span></td><td><code>(1, 721, 1440)</code></td><td class="num">4,15 МБ</td><td class="good">1 чанк</td><td class="bad">364 чанка = 1442 МБ</td></tr>
+        <tr><td>по времени <span class="foot">(предлагается добавить)</span></td><td><code>(время всё, 32, 32)</code></td><td class="num">1,49 МБ</td><td class="bad">1035 чанков</td><td class="good">1 чанк = 1,5 МБ</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Вторая раскладка — <b>копия того же массива</b>, а не замена первой. Цена: ещё 50 ГБ на диске
+    (свободно 1,2 ТБ) и перестроение при каждом пополнении архива. Выигрыш на запросах в точке —
+    примерно <b>тысячекратный</b>, и именно эти запросы будут массовыми у пользователей.</p>
+
+  <p>Ориентир по размеру чанка: <b>1–16 МБ в сжатом виде</b>. Мельче — накладные расходы на метаданные
+    и тысячи мелких чтений; крупнее — обратно та же проблема, что сейчас: читаем много, отдаём мало.
+    Тайл 32×32 по всем 364 моментам даёт 1,49 МБ — попадает в середину диапазона.</p>
+
+  <h2>5. Горячее и холодное хранение</h2>
+
+  <p>Это то, о чём говорил ментор, и это <b>не про чанки</b>, а про то, <i>где</i> лежат данные.
+    Два измерения независимы: можно положить данные в самую быструю память и всё равно читать
+    1442 МБ ради 1,4 КБ, если чанки нарезаны неправильно.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Слой</th><th>Что лежит</th><th>Где</th><th class="num">Объём</th><th class="num">Чтение</th></tr></thead>
+      <tbody>
+        <tr><td class="good">горячий</td><td>2 последних прогона + последние 7 суток истории, только ходовые переменные</td><td>страничный кэш ОС (RAM)</td><td class="num">~30 ГБ</td><td class="num">микросекунды</td></tr>
+        <tr><td>тёплый</td><td>прогоны за месяц, полный набор каналов</td><td>локальный SSD</td><td class="num">~200 ГБ</td><td class="num">1,1 с на поле</td></tr>
+        <tr><td>холодный</td><td>весь архив анализа, старые прогоны</td><td>диск / объектное хранилище, сжатие сильнее</td><td class="num">50 ГБ + рост</td><td class="num">секунды</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Приятная новость: <b>горячий слой на этой машине уже существует и ничего не стоит</b>. В боксе
+    <span class="num">251 ГБ</span> RAM, из них <span class="num">167 ГБ</span> прямо сейчас занято
+    страничным кэшем — Linux сам держит недавно прочитанные файлы в памяти. Отдельный Redis или
+    in-memory-хранилище для начала не нужен; нужно лишь, чтобы горячие данные <i>помещались</i> и
+    чтобы их не вытесняло чем попало.</p>
+
+  <p>Отсюда арифметика вытеснения, и она жёсткая. Один прогон на 10 суток — это
+    <span class="num">744 МБ</span> на сутки прогноза × 10 = <span class="num">7,4 ГБ</span>.
+    Четыре прогона в сутки — <span class="num">30 ГБ в день</span>, около
+    <span class="num">900 ГБ в месяц</span> при 1,2 ТБ свободных. Без политики удаления диск
+    кончится за <b>40 дней</b>.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Правило</th><th>Зачем</th></tr></thead>
+      <tbody>
+        <tr><td>Горячий слой — последние 2 прогона и 7 суток истории</td><td>покрывает подавляющее большинство запросов: «сейчас» и «ближайшие дни»</td></tr>
+        <tr><td>После каждого прогона — прочитать новые файлы насквозь</td><td>прогрев: иначе первый пользователь платит за холодное чтение</td></tr>
+        <tr><td>Старше 30 суток — сжать сильнее и/или проредить каналы</td><td>прогноз недельной давности нужен для оценки качества, а не поточно</td></tr>
+        <tr><td>Старше 90 суток — удалять прогнозы, архив анализа оставлять</td><td>анализ невоспроизводим (стоит квоты CDS), прогноз пересчитывается за 106 с</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="foot">Последняя строка — важная асимметрия. <code>~/data/global.zarr</code> строился
+    18 минут и стоил квоту CDS; прогноз на 10 суток пересчитывается за
+    <span class="num">106 с</span> на одной карте. Хранить надо то, что дорого получить заново,
+    а не то, что занимает место.</p>
+
+  <h2>6. Порядок внедрения</h2>
+
+  <p>Это последовательность: каждый следующий пункт опирается на предыдущий и без него не имеет
+    смысла.</p>
+
+  <ol>
+    <li><b><code>/v1/meta</code> и <code>/v1/history</code></b> — чистое чтение из
+      <code>ERA5Store</code>, без GPU и без очереди. Даёт рабочую половину контракта за наименьшую
+      цену и сразу проверяет формат ответа на реальных пользователях.</li>
+    <li><b>Выбор переменных и точки/bbox</b> в существующем <code>/forecast</code>. Убирает
+      выдачу целых файлов там, где нужен один ряд.</li>
+    <li><b>Планировщик</b>: прогон по расписанию раз в 6 ч, запись в хранилище прогнозов. С этого
+      момента <code>/v1/forecast</code> в большинстве случаев отвечает <code>200</code>, а не
+      <code>202</code>, и время ответа падает с 15,8 с до чтения.</li>
+    <li><b>Вторая раскладка чанков</b> под запросы в точке. Имеет смысл только когда есть кому
+      её читать — то есть после пунктов 1–3.</li>
+    <li><b>Политика вытеснения и прогрев.</b> Обязателен к сроку «40 дней от запуска планировщика»,
+      а не «когда-нибудь».</li>
+  </ol>
+
+  <hr>
+  <p class="foot">Числа: 2,65 с на шаг, 15,8 с тёплый запрос, 19,0 GiB пик, 1442 МБ на ряд в точке,
+    744 МБ на сутки прогноза — из <code>bench/results/*.json</code>
+    (<code>scripts/bench_suite.py</code>). 251 ГБ RAM, 167 ГБ страничного кэша, 1,2 ТБ свободно —
+    <code>free -g</code> и <code>df -h</code> на машине. Покрытие архива
+    2026-04-01 … 2026-06-30, 364 момента — из самого <code>global.zarr</code>. Оценка 106 с на
+    прогон 10 суток — это 40 × 2,65 с, то есть счёт без чтения и записи.</p>
+</main>
