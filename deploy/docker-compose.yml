@@ -19,45 +19,55 @@ x-worker: &worker
     - ${AURORA_DATA_DIR:-/home/kostya/data}:/data:ro
     - ${AURORA_CACHE_DIR:-/home/kostya/.cache/huggingface}:/cache/huggingface
     - ${AURORA_OUTPUT_DIR:-/home/kostya/outputs}:/outputs
-  # A forecast holds ~24 GiB of VRAM in fp32 and ~19 GiB in fp16, so one
-  # container per card and no oversubscription. `device_ids` is what pins it;
-  # without it every container sees every GPU and they all pile onto cuda:0.
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            capabilities: [gpu]
+  environment: &env
+    # Always cuda:0 — each container is given exactly one card by device_ids
+    # below, and inside the container that card is device 0 whichever physical
+    # GPU it is.
+    AURORA_DEVICE: cuda:0
+    AURORA_AUTOCAST: ${AURORA_AUTOCAST:-off}
+
+# A forecast holds ~24 GiB of VRAM in fp32 and ~19 GiB in fp16, so one container
+# per card and no oversubscription — measured: two fp16 workers on one V100 die
+# with an out-of-memory, they do not merely run slowly.
+#
+# The pinning has to be `device_ids` and nothing else. Reserving GPUs through
+# the `deploy` block and *also* setting NVIDIA_VISIBLE_DEVICES does not compose:
+# the toolkit honours the reservation, the env var is ignored, and every
+# container ends up on the same physical card.
 
 services:
   aurora-0:
     <<: *worker
     ports: ["8000:8000"]
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "0"
-      AURORA_DEVICE: cuda:0
-      AURORA_AUTOCAST: ${AURORA_AUTOCAST:-off}
+    environment: *env
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, device_ids: ["0"], capabilities: [gpu]}]
 
   aurora-1:
     <<: *worker
     ports: ["8001:8000"]
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "1"
-      AURORA_DEVICE: cuda:0
-      AURORA_AUTOCAST: ${AURORA_AUTOCAST:-off}
+    environment: *env
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, device_ids: ["1"], capabilities: [gpu]}]
 
   aurora-2:
     <<: *worker
     ports: ["8002:8000"]
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "2"
-      AURORA_DEVICE: cuda:0
-      AURORA_AUTOCAST: ${AURORA_AUTOCAST:-off}
+    environment: *env
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, device_ids: ["2"], capabilities: [gpu]}]
 
   aurora-3:
     <<: *worker
     ports: ["8003:8000"]
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "3"
-      AURORA_DEVICE: cuda:0
-      AURORA_AUTOCAST: ${AURORA_AUTOCAST:-off}
+    environment: *env
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, device_ids: ["3"], capabilities: [gpu]}]
