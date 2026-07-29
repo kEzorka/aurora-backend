@@ -42,6 +42,9 @@ LEVEL_COORD = "pressure_level"
 SURF_VARS = ("t2m", "u10", "v10", "msl")
 ATMOS_VARS = ("z", "q", "t", "u", "v")
 
+# The archive codec, matching what the live store already carries.
+ARCHIVE_CODEC = zarr.codecs.BloscCodec(cname="lz4", clevel=5, shuffle="shuffle")
+
 # Set once per worker process so the NetCDF files are opened once, not once
 # per timestamp.
 _CACHE: dict[Path, xr.Dataset] = {}
@@ -117,7 +120,11 @@ def create_store(dst: Path, stamps: np.ndarray, sample: xr.Dataset) -> np.ndarra
         },
         coords=coords,
     )
-    template.to_zarr(dst, mode="w", compute=False)
+    # Name the codec. Under zarr 2 saying nothing gave exactly this; zarr 3
+    # defaults to Zstd without shuffle, so a rebuild would quietly come back in a
+    # different codec than the store it replaces. Same trap as postprocess.
+    encoding = {name: {"compressors": [ARCHIVE_CODEC]} for name in template.data_vars}
+    template.to_zarr(dst, mode="w", compute=False, encoding=encoding)
     return levels
 
 
