@@ -3,6 +3,11 @@
 A rollout takes minutes, so HTTP requests hand work to one background thread
 and poll for the result. One worker, because one model instance owns one GPU;
 scaling out means one process per GPU, not more threads.
+
+Job state lives in `registry.Registry`, not in this process, so that the
+several processes those GPUs imply can answer for each other's jobs — and so
+that a request for a forecast that already exists is answered from disk
+instead of computed a second time.
 """
 
 from __future__ import annotations
@@ -12,69 +17,81 @@ import queue
 import threading
 import traceback
 import uuid
-from dataclasses import dataclass, field
-from typing import Literal
 
 from . import batch_builder, config, postprocess
 from .era5_store import ERA5Store
 from .inference import AuroraEngine
+from .registry import Job, Registry, Status, store_size
 
-Status = Literal["queued", "running", "done", "failed"]
-
-
-@dataclass
-class Job:
-    id: str
-    init_time: dt.datetime
-    steps: int
-    status: Status = "queued"
-    progress: int = 0
-    output: str | None = None
-    error: str | None = None
-    created: dt.datetime = field(default_factory=dt.datetime.utcnow)
+__all__ = ["ForecastService", "Job", "Status"]
 
 
 class ForecastService:
     def __init__(self) -> None:
         self.store = ERA5Store()
+        self.registry = Registry()
         self.engine: AuroraEngine | None = None  # loaded lazily on first job
-        self._jobs: dict[str, Job] = {}
-        self._lock = threading.Lock()
         self._queue: queue.Queue[str] = queue.Queue()
         self._worker = threading.Thread(target=self._run, daemon=True)
         self._worker.start()
 
     # ------------------------------------------------------------------- API
 
-    def submit(self, init_time: dt.datetime, steps: int) -> Job:
+    def submit(self, init_time: dt.datetime, steps: int) -> tuple[Job, bool]:
+        """Return the job for this request and whether it was already there.
+
+        A forecast is identified by what it contains — the init time and the
+        lead — so an identical request is answered with the existing job. That
+        matters more than it sounds: `ForecastWriter` deletes the store at the
+        output path before writing, so recomputing a duplicate used to destroy
+        the finished copy another caller still held a download link for.
+        """
+        ready = self.registry.find_ready(init_time, steps)
+        if ready is not None:
+            self.registry.touch(ready.id)
+            return ready, True
+
+        # A job somebody else queued a second ago is just as good as a
+        # finished one; two callers asking for the same forecast at once
+        # should wait on one rollout, not occupy two cards with the same work.
+        for job in self.registry.all():
+            if (
+                job.status in ("queued", "running")
+                and job.init_time == init_time
+                and job.steps == steps
+            ):
+                return job, True
+
         prev = init_time - dt.timedelta(hours=config.STEP_HOURS)
         for t in (prev, init_time):
             if not self.store.has(t):
                 self.store._require(t)
 
-        job = Job(id=uuid.uuid4().hex[:12], init_time=init_time, steps=steps)
-        with self._lock:
-            self._jobs[job.id] = job
+        job = self.registry.add(
+            Job(id=uuid.uuid4().hex[:12], init_time=init_time, steps=steps)
+        )
         self._queue.put(job.id)
-        return job
+        return job, False
 
     def get(self, job_id: str) -> Job | None:
-        with self._lock:
-            return self._jobs.get(job_id)
+        return self.registry.get(job_id)
 
     def all(self) -> list[Job]:
-        with self._lock:
-            return sorted(self._jobs.values(), key=lambda j: j.created, reverse=True)
+        return self.registry.all()
+
+    def touch(self, job_id: str) -> None:
+        self.registry.touch(job_id)
 
     # ---------------------------------------------------------------- worker
 
     def _run(self) -> None:
         while True:
-            job = self.get(self._queue.get())
+            job_id = self._queue.get()
+            job = self.registry.get(job_id)
             if job is None:
                 continue
             try:
-                job.status = "running"
+                self.registry.update(job_id, status="running")
                 if self.engine is None:
                     self.engine = AuroraEngine()
 
@@ -83,12 +100,24 @@ class ForecastService:
                 # Each step is written and released before the next one is
                 # computed, so a 40-step job costs one step of host memory.
                 writer = postprocess.ForecastWriter(job.init_time, job.steps)
+                done = 0
                 for pred in self.engine.rollout(batch, job.steps):
                     writer.add(pred)
-                    job.progress += 1
+                    done += 1
+                    self.registry.update(job_id, progress=done)
 
-                job.output = str(writer.finish())
-                job.status = "done"
+                path = writer.finish()
+                self.registry.update(
+                    job_id,
+                    status="done",
+                    output=str(path),
+                    size_bytes=store_size(path),
+                    last_access=dt.datetime.utcnow().isoformat(timespec="seconds"),
+                )
+                # Checked after every finished forecast rather than on a timer:
+                # this is the only moment the total can have grown.
+                self.registry.evict()
             except Exception:
-                job.error = traceback.format_exc(limit=3)
-                job.status = "failed"
+                self.registry.update(
+                    job_id, status="failed", error=traceback.format_exc(limit=3)
+                )

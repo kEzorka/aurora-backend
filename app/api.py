@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     service = ForecastService()
     yield
     service.store.close()
+    service.registry.close()
 
 
 app = FastAPI(title="Aurora forecast backend", lifespan=lifespan)
@@ -60,16 +61,21 @@ def health() -> dict:
         "archive_to": stamps[-1].isoformat(),
         "archive_steps": len(stamps),
         "levels": list(s.store.levels),
+        "stored_gb": round(s.registry.total_bytes() / 1024**3, 2),
+        "cap_gb": round(config.DISK_CAP_BYTES / 1024**3, 1),
     }
 
 
 @app.post("/forecast")
 def create(req: ForecastRequest) -> dict:
     try:
-        job = _svc().submit(req.init_time.replace(tzinfo=None), req.steps)
+        job, reused = _svc().submit(req.init_time.replace(tzinfo=None), req.steps)
     except KeyError as e:
         raise HTTPException(400, str(e)) from None
-    return {"job_id": job.id, "status": job.status}
+    # `reused` is not decoration: a client that sees `done` immediately can
+    # skip polling entirely, and a client that sees its request matched an
+    # already-running job knows why the progress bar starts at 12 of 40.
+    return {"job_id": job.id, "status": job.status, "reused": reused}
 
 
 @app.get("/forecast/{job_id}")
@@ -101,6 +107,9 @@ def download(job_id: str):
     if job is None or job.status != "done" or job.output is None:
         raise HTTPException(404, "no finished output for this job")
 
+    # Eviction ranks by last read, so a forecast being downloaded has to say
+    # so — otherwise the one everybody actually uses looks idle and goes first.
+    _svc().touch(job_id)
     path = Path(job.output)
     if path.is_file():
         return FileResponse(path, media_type="application/x-netcdf", filename=path.name)
