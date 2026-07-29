@@ -5,17 +5,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import json
 import subprocess
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import config
 from .jobs import ForecastService
+from .registry import Job
 
 service: ForecastService | None = None
 
@@ -66,16 +70,42 @@ def health() -> dict:
     }
 
 
+def _job_json(job: Job) -> dict:
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "init_time": job.init_time.isoformat(),
+        "steps": job.steps,
+        "lead_hours": job.lead_hours,
+        "progress": job.progress,
+        "output": job.output,
+        "error": job.error,
+    }
+
+
 @app.post("/forecast")
 def create(req: ForecastRequest) -> dict:
+    """Answer with the forecast if it is quick, with a job id if it is not.
+
+    Handing back a job id for work that took three seconds makes every client
+    implement polling for nothing, and a cache hit costs no time at all. So
+    the request waits for its own result up to INLINE_WAIT_S and only then
+    falls back to the asynchronous path. Callers do not have to care which
+    happened: `status` says `done` or it does not.
+    """
     try:
         job, reused = _svc().submit(req.init_time.replace(tzinfo=None), req.steps)
     except KeyError as e:
         raise HTTPException(400, str(e)) from None
-    # `reused` is not decoration: a client that sees `done` immediately can
-    # skip polling entirely, and a client that sees its request matched an
+
+    deadline = time.monotonic() + config.INLINE_WAIT_S
+    while job.status not in ("done", "failed") and time.monotonic() < deadline:
+        time.sleep(0.25)
+        job = _svc().get(job.id) or job
+
+    # `reused` is not decoration: a client whose request matched an
     # already-running job knows why the progress bar starts at 12 of 40.
-    return {"job_id": job.id, "status": job.status, "reused": reused}
+    return {**_job_json(job), "reused": reused, "events": f"/forecast/{job.id}/events"}
 
 
 @app.get("/forecast/{job_id}")
@@ -83,15 +113,80 @@ def status(job_id: str) -> dict:
     job = _svc().get(job_id)
     if job is None:
         raise HTTPException(404, "no such job")
-    return {
-        "job_id": job.id,
-        "status": job.status,
-        "init_time": job.init_time.isoformat(),
-        "steps": job.steps,
-        "progress": job.progress,
-        "output": job.output,
-        "error": job.error,
-    }
+    return _job_json(job)
+
+
+# A connection that says nothing for two minutes is a connection nginx closes
+# after sixty seconds; the timeout is on silence, not on duration. A step
+# lands every 2.65 s, so this stream is never quiet for long, and the
+# heartbeat covers the gap before the first one while the checkpoint loads.
+HEARTBEAT_S = 15.0
+POLL_S = 0.5
+
+
+def _sse(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+
+@app.get("/forecast/{job_id}/events")
+async def events(job_id: str, request: Request) -> StreamingResponse:
+    """Progress as it happens, instead of the client asking over and over.
+
+    The client opens this once and reads until `done`. What it costs the
+    server is one SQLite read every POLL_S — the polling did not disappear,
+    it moved to where it is cheap and stopped being the client's problem.
+    """
+    if _svc().get(job_id) is None:
+        raise HTTPException(404, "no such job")
+
+    async def stream():
+        last: tuple | None = None
+        last_sent = 0.0
+        while True:
+            # A client that closed the tab should not keep this loop alive.
+            if await request.is_disconnected():
+                return
+
+            job = _svc().get(job_id)
+            if job is None:
+                yield _sse("error", {"job_id": job_id, "error": "job disappeared"})
+                return
+
+            now = time.monotonic()
+            state = (job.status, job.progress)
+            if state != last:
+                eta = round((job.steps - job.progress) * 2.65, 1)
+                yield _sse(
+                    "progress",
+                    {
+                        "job_id": job.id,
+                        "status": job.status,
+                        "done": job.progress,
+                        "total": job.steps,
+                        "eta_s": eta if job.status in ("queued", "running") else 0,
+                    },
+                )
+                last, last_sent = state, now
+            elif now - last_sent > HEARTBEAT_S:
+                yield ": keepalive\n\n"
+                last_sent = now
+
+            if job.status == "done":
+                yield _sse("done", {**_job_json(job), "data": f"/forecast/{job.id}/download"})
+                return
+            if job.status == "failed":
+                yield _sse("failed", {"job_id": job.id, "error": job.error})
+                return
+
+            await asyncio.sleep(POLL_S)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        # Without this an nginx in front of the service buffers the whole
+        # stream and delivers it at the end, which is exactly not the point.
+        headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
+    )
 
 
 @app.get("/forecast/{job_id}/download")

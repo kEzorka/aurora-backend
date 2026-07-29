@@ -50,4 +50,10 @@ STATE_DB = Path(os.environ.get("AURORA_STATE_DB", OUTPUT_DIR / "registry.db"))
 # current 7.3 GB each. The 80 GB gap keeps eviction rare — with one mark the
 # store would sit on the threshold and delete something on every new job.
 DISK_CAP_BYTES = int(float(os.environ.get("AURORA_DISK_CAP_GB", "300")) * 1024**3)
-DISK_LOW_BYTES = int(float(os.environ.get("AURORA_DISK_LOW_GB", "220")) * 1024**3)
+DISK_LOW_BYTES = int(float(os.environ.get("AURORA_DISK_LOW_GB", "250")) * 1024**3)
+
+# How long POST /forecast is willing to wait for its own result before giving
+# up and handing back a job id. A step is 2.65 s, so this covers a two- or
+# three-step request and every cache hit; a ten-day rollout never fits and is
+# not meant to.
+INLINE_WAIT_S = float(os.environ.get("AURORA_INLINE_WAIT_S", "10"))
