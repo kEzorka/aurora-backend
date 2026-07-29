@@ -335,6 +335,60 @@ def chart_divergence_ratio(records) -> None:
     save(fig, "divergence")
 
 
+def chart_service(records) -> None:
+    """What the running service costs its caller, cold and warm, 1 worker vs 4.
+
+    The left panel is the argument against process-per-request and against a
+    container that gets torn down between jobs: the first request pays the
+    checkpoint load, every later one does not, and the difference is the whole
+    of that gap. The right panel is whether adding workers adds throughput —
+    if it scales, the current process model already has what a microservice
+    split is supposed to provide.
+    """
+    ok = [r for r in records if r.get("status") == "done"]
+    counts = sorted({r["workers"] for r in ok})
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
+
+    ax = axes[0]
+    width = 0.36
+    x = np.arange(len(counts))
+    for offset, (cold, color, label) in enumerate((
+            (True, COLOR["fp32"], "first request (loads the checkpoint)"),
+            (False, COLOR["fp16"], "every request after"))):
+        vals = [np.median([r["latency_s"] for r in ok
+                           if r["workers"] == n and r["cold"] is cold] or [0])
+                for n in counts]
+        pos = x + (offset - 0.5) * width
+        ax.bar(pos, vals, width, color=color, label=label)
+        for p, v in zip(pos, vals):
+            ax.text(p, v, f"{v:.0f}s", ha="center", va="bottom", color=INK,
+                    fontsize=9.5, fontweight="600")
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{n} worker{'s' if n > 1 else ''}" for n in counts])
+    ax.xaxis.grid(False)
+    style(ax, "What the caller waits",
+          "median over the requests in the round; the model stays resident between them")
+    ax.set_ylabel("seconds", color=MUTED, fontsize=9.5)
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper right")
+
+    ax = axes[1]
+    thr = [n * 60 / np.median([r["latency_s"] for r in ok
+                               if r["workers"] == n and not r["cold"]])
+           for n in counts]
+    ax.plot(counts, thr, "o-", color=COLOR["fp16+compile"], linewidth=2, markersize=6)
+    ax.plot(counts, [thr[0] * n / counts[0] for n in counts], "--", color=MUTED,
+            linewidth=1, label="one GPU's rate, times the number of GPUs")
+    for n, t in zip(counts, thr):
+        ax.text(n, t, f"  {t:.1f}", color=INK, fontsize=9.5, va="center")
+    ax.set_xticks(counts)
+    style(ax, "Throughput of the service as it stands",
+          "warm requests only, so no checkpoint load is counted")
+    ax.set_xlabel("resident workers, one per GPU", color=MUTED, fontsize=9.5)
+    ax.set_ylabel("forecasts / minute", color=MUTED, fontsize=9.5)
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper left")
+    save(fig, "service")
+
+
 def main() -> int:
     print("charts:")
     stages = load("stages")
@@ -342,6 +396,9 @@ def main() -> int:
         chart_stages(stages)
         chart_perstep(stages)
         chart_memory(stages)
+    svc = load("service")
+    if svc:
+        chart_service(svc)
     conc = load("concurrency")
     if conc:
         chart_concurrency(conc)
