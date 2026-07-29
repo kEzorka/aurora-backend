@@ -1,0 +1,25 @@
+# Install torch FIRST, from the cu126 index, and only then this file:
+#
+#   pip install torch==2.13.0 torchvision --index-url https://download.pytorch.org/whl/cu126
+#   pip install -r requirements.txt
+#
+# The order is not cosmetic — see "Why the install order matters" in README.
+
+microsoft-aurora==2.0.0
+xarray
+
+# zarr 2.x on purpose. zarr-python 3 changed the on-disk metadata and the
+# semantics of append_dim / region writes, which is exactly what both the
+# archive converter and the streaming forecast writer rely on.
+zarr>=2.18,<3
+
+# Only the converter needs dask, to lay out the store's metadata without
+# materialising ~100 GB of placeholders. Serving reads zarr directly.
+dask[array]
+
+# The raw CDS download is NetCDF; the converter reads it and the backend can
+# still serve from it directly.
+netCDF4
+
+fastapi
+uvicorn[standard]

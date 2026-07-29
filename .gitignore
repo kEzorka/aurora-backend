@@ -1,0 +1,17 @@
+# Everything here is reproducible from the code plus the archive, and all of it
+# is large enough to make a clone useless if committed.
+.venv/
+__pycache__/
+*.pyc
+
+# Forecast stores. One 40-step run is 7 GB.
+outputs/
+outputs_*/
+bench/scratch/
+
+# Benchmark output is kept: the charts are drawn from it, and a chart whose
+# input is not in the repo cannot be checked.
+!bench/results/
+!bench/charts/
+
+.DS_Store
