@@ -1,0 +1,44 @@
+{
+  "note": "Same 4-step fp16 rollout, init 2026-04-05T00, GPU3, run once per configuration. Read timings are all taken under .venv312, because that is the runtime the backend is moving to. No application code was changed: the third configuration patches _zarr_encoding from scripts/profile_blosc3.py.",
+  "date": "2026-07-29",
+  "configs": {
+    "zarr2 lz4-5 shuffle": {"python": "3.10.12", "zarr": "2.18.3", "torch": "2.13.0+cu126", "codec": "Blosc(lz4, clevel=5, shuffle) - today's default, read from the store's own .zarray"},
+    "zarr3 zstd-0 noshuffle": {"python": "3.12.13", "zarr": "3.2.1", "torch": "2.13.0+cu126", "codec": "ZstdCodec(level=0) - what zarr 3 picks when nobody says otherwise"},
+    "zarr3 lz4-5 shuffle": {"python": "3.12.13", "zarr": "3.2.1", "torch": "2.13.0+cu126", "codec": "BloscCodec(lz4, 5, shuffle) - the migration target"}
+  },
+  "forward_s_per_step": {
+    "zarr2 lz4-5 shuffle": [3.45, 2.66, 2.66, 2.67],
+    "zarr3 zstd-0 noshuffle": [3.12, 2.67, 2.66, 2.66],
+    "zarr3 lz4-5 shuffle": [3.06, 2.67, 2.67, 2.66],
+    "verdict": "2.66 s/step everywhere; Python 3.12, numpy 2.4 and the new torch build are neutral on the GPU"
+  },
+  "write_s_per_step": {
+    "zarr2 lz4-5 shuffle": 0.40,
+    "zarr3 zstd-0 noshuffle": 1.05,
+    "zarr3 lz4-5 shuffle": 0.62,
+    "verdict": "the 2.6x penalty splits: ~0.43 s is zstd instead of lz4, ~0.22 s is zarr 3's own write path at the same codec"
+  },
+  "mb_per_step": {"zarr2 lz4-5 shuffle": 186.1, "zarr3 zstd-0 noshuffle": 150.5, "zarr3 lz4-5 shuffle": 186.1},
+  "gb_per_10day_run": {"zarr2 lz4-5 shuffle": 7.27, "zarr3 zstd-0 noshuffle": 5.88, "zarr3 lz4-5 shuffle": 7.27},
+  "read_s_blosc_threads_1": {
+    "full_4_steps": {"zarr2 lz4-5 shuffle": 1.08, "zarr3 zstd-0 noshuffle": 1.38, "zarr3 lz4-5 shuffle": 1.16},
+    "europe_cut": {"zarr2 lz4-5 shuffle": 0.55, "zarr3 zstd-0 noshuffle": 0.76, "zarr3 lz4-5 shuffle": 0.58},
+    "one_2t_map_ms": {"zarr2 lz4-5 shuffle": 7, "zarr3 zstd-0 noshuffle": 11, "zarr3 lz4-5 shuffle": 7}
+  },
+  "read_s_blosc_threads_4": {
+    "full_4_steps": {"zarr2 lz4-5 shuffle": 1.03, "zarr3 zstd-0 noshuffle": 1.42, "zarr3 lz4-5 shuffle": 1.09},
+    "europe_cut": {"zarr2 lz4-5 shuffle": 0.49, "zarr3 zstd-0 noshuffle": 0.97, "zarr3 lz4-5 shuffle": 0.49},
+    "one_2t_map_ms": {"zarr2 lz4-5 shuffle": 6, "zarr3 zstd-0 noshuffle": 12, "zarr3 lz4-5 shuffle": 6},
+    "caveat": "blosc thread count does nothing for the zstd store - that codec is zarr's own, not blosc. Its threads=4 row moving at all is variance."
+  },
+  "decision": "keep Blosc lz4-5 shuffle and set it explicitly on migration. The zarr 3 default buys 1.39 GB per ten-day run and costs 17 s of write per run and ~40% on every regional read, which is the wrong side of a trade for a backend whose job is fast analysis.",
+  "codecs_on_one_real_forecast_step": {
+    "raw_mb": 272.9,
+    "note": "the same measurement bench_compress.py makes, but on Aurora's output instead of on ERA5",
+    "lz4-5 shuffle": {"mb": 186.4, "ratio": 1.46, "encode_ms": 318, "decode_ms": 91},
+    "zstd-3 shuffle": {"mb": 176.4, "ratio": 1.55, "encode_ms": 1525, "decode_ms": 169},
+    "zstd-3 noshuffle": {"mb": 144.3, "ratio": 1.89, "encode_ms": 4460, "decode_ms": 606},
+    "zstd-5 bitshuffle": {"mb": 170.6, "ratio": 1.60, "encode_ms": 2731, "decode_ms": 247}
+  },
+  "why_bench_compress_overstated_the_ratio": "bench/results/compress.json measured 1.97 for lz4-5 shuffle, but on ERA5 fields. CDS packs ERA5 as int16 with a scale factor, so the decoded float32 sits on a uniform lattice: t at level 6 has 46310 distinct values in 1038240 points, minimum gap exactly 2^-10. After shuffle the low mantissa bytes of such data are nearly constant. Aurora's own output has no lattice (minimum gap 1.5e-05) and the same codec reaches only 1.46, matching the 1.47 the real store gets. Every per-run size estimate derived from bench_compress is optimistic by about a third; the 7.3 GB/run in scripts/check_registry.py was right. Note also that shuffle helps ERA5 and hurts Aurora output: on the forecast, zstd-3 noshuffle (1.89) beats zstd-3 shuffle (1.55)."
+}

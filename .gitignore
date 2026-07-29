@@ -1,6 +1,7 @@
 # Everything here is reproducible from the code plus the archive, and all of it
 # is large enough to make a clone useless if committed.
 .venv/
+.venv312/
 __pycache__/
 *.pyc
 
