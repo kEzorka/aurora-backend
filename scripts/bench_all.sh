@@ -9,7 +9,7 @@
 # other, and either one running under the other's load measures neither.
 set -u
 
-PY=./.venv/bin/python
+PY=./.venv312/bin/python
 
 run() {
     echo "=== $* ($(date +%H:%M:%S))"

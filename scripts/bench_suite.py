@@ -284,7 +284,7 @@ def service(args) -> list[dict]:
         env["AURORA_DEVICE"] = f"cuda:{i % args.gpus}"
         env["AURORA_OUTPUT_DIR"] = str(ROOT / "bench" / "scratch" / f"svc{i}")
         procs.append(subprocess.Popen(
-            [str(ROOT / ".venv" / "bin" / "uvicorn"), "app.api:app",
+            [str(ROOT / ".venv312" / "bin" / "uvicorn"), "app.api:app",
              "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
             cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         ports.append(port)

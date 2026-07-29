@@ -12,7 +12,7 @@ PORT="${PORT:-8099}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 cd "$ROOT"
-./.venv/bin/uvicorn app.api:app --host 127.0.0.1 --port "$PORT" >/tmp/uvicorn.log 2>&1 &
+./.venv312/bin/uvicorn app.api:app --host 127.0.0.1 --port "$PORT" >/tmp/uvicorn.log 2>&1 &
 UVICORN_PID=$!
 trap 'kill $UVICORN_PID 2>/dev/null || true' EXIT
 
@@ -66,7 +66,7 @@ else
     OPEN="$DEST/payload"
 fi
 
-./.venv/bin/python -c "
+./.venv312/bin/python -c "
 import sys
 from app import postprocess
 ds = postprocess.open_forecast(sys.argv[1])

@@ -16,6 +16,7 @@ from typing import Iterable
 
 import numpy as np
 import xarray as xr
+import zarr
 from aurora import Batch
 
 from . import config
@@ -66,13 +67,28 @@ def _tag(ds: xr.Dataset, init_time: dt.datetime) -> xr.Dataset:
     return ds
 
 
+# The forecast codec, and the only place in app/ that names one. It has to be
+# spelled out: zarr 2 defaulted to exactly this, so the old code got it by saying
+# nothing, and zarr 3 defaults to Zstd without shuffle. Saying nothing here again
+# would quietly re-compress every forecast the backend writes — the same trap as
+# the archive conversion, in the opposite direction.
+FORECAST_CODEC = zarr.codecs.BloscCodec(cname="lz4", clevel=5, shuffle="shuffle")
+
+# zarr 3 writes chunks through an async pipeline, 10 at a time by default. A
+# rollout step is 69 small writes to a local disk, which gets nothing from that
+# fan-out and pays for the contention; 4 measured faster on this box. Set at
+# import because the setting is global to zarr, not per-store.
+zarr.config.set({"async.concurrency": 4})
+
+
 def _zarr_encoding(ds: xr.Dataset) -> dict:
     """One chunk per (lead, level) field — the shape a reader asks for."""
     return {
         name: {
             "chunks": tuple(
                 1 if d in (TIME_DIM, LEVEL_DIM) else var.sizes[d] for d in var.dims
-            )
+            ),
+            "compressors": [FORECAST_CODEC],
         }
         for name, var in ds.data_vars.items()
     }

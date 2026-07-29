@@ -22,12 +22,12 @@ outputs/            forecast_YYYYMMDDTHHMM_NNNh.zarr  (init time + final lead)
 ## Setup
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/pip install torch==2.13.0 torchvision \
+python3.12 -m venv .venv312
+./.venv312/bin/pip install torch==2.13.0 torchvision \
     --index-url https://download.pytorch.org/whl/cu126
-./.venv/bin/pip install -r requirements.txt
+./.venv312/bin/pip install -r requirements.txt
 
-./.venv/bin/python -m scripts.to_zarr --workers 12    # 18 min, run once
+./.venv312/bin/python -m scripts.to_zarr --workers 12    # 18 min, run once
 ```
 
 ## Data layout
@@ -75,10 +75,10 @@ Two separate traps, both of which cost time here:
 ## Run
 
 ```bash
-./.venv/bin/python -m scripts.verify_batch 2026-05-01T00
-./.venv/bin/python -m scripts.run_forecast 2026-05-01T00 --steps 4
-./.venv/bin/python -m scripts.score_forecast outputs/forecast_20260501T0000_024h.zarr
-./.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
+./.venv312/bin/python -m scripts.verify_batch 2026-05-01T00
+./.venv312/bin/python -m scripts.run_forecast 2026-05-01T00 --steps 4
+./.venv312/bin/python -m scripts.score_forecast outputs/forecast_20260501T0000_024h.zarr
+./.venv312/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
 ./scripts/smoke_api.sh          # starts a server, submits, polls, downloads
 ```
 

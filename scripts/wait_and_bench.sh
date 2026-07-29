@@ -18,7 +18,7 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
-PY=./.venv/bin/python
+PY=./.venv312/bin/python
 LOG=bench/wait_and_bench.log
 OCC=bench/results/occupancy.csv
 DONE=bench/results/wait_and_bench.status
