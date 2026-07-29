@@ -1,0 +1,372 @@
+<title>Aurora backend: что измерено</title>
+<style>
+  :root {
+    --paper: #fbfaf7;
+    --ink: #1b1d21;
+    --muted: #6b7077;
+    --rule: #e2e0dc;
+    --card: #f4f2ed;
+    --ref: #3a5a8c;
+    --cand: #c26b3d;
+    --ok: #4d7a5c;
+    --warn: #8c3a5a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #15171b;
+      --ink: #e7e5e0;
+      --muted: #9aa0a8;
+      --rule: #2b2f36;
+      --card: #1c1f24;
+      --ref: #7ea3d6;
+      --cand: #e0966a;
+      --ok: #79b08c;
+      --warn: #d980a4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #15171b;
+    --ink: #e7e5e0;
+    --muted: #9aa0a8;
+    --rule: #2b2f36;
+    --card: #1c1f24;
+    --ref: #7ea3d6;
+    --cand: #e0966a;
+    --ok: #79b08c;
+    --warn: #d980a4;
+  }
+  :root[data-theme="light"] {
+    --paper: #fbfaf7;
+    --ink: #1b1d21;
+    --muted: #6b7077;
+    --rule: #e2e0dc;
+    --card: #f4f2ed;
+    --ref: #3a5a8c;
+    --cand: #c26b3d;
+    --ok: #4d7a5c;
+    --warn: #8c3a5a;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.62 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    margin: 0;
+    padding: 0 20px 96px;
+  }
+  main { max-width: 46rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1.1rem; }
+  h1, h2, h3 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    text-wrap: balance;
+    margin: 0;
+    font-weight: 600;
+  }
+  h1 { font-size: 2.05rem; line-height: 1.18; letter-spacing: -0.01em; margin-top: 3.4rem; }
+  h2 { font-size: 1.4rem; margin-top: 2.6rem; }
+  h3 { font-size: 1.06rem; margin-top: 1.4rem; }
+  p, li { margin: 0; }
+  ul { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  a { color: var(--ref); }
+  code, .num {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.92em;
+  }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .lede { color: var(--muted); font-size: 1.05rem; }
+
+  .verdict {
+    background: var(--card);
+    border-left: 3px solid var(--ok);
+    padding: 1.1rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .verdict.warn { border-left-color: var(--warn); }
+  .verdict .eyebrow { color: var(--ok); }
+  .verdict.warn .eyebrow { color: var(--warn); }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .metric { background: var(--paper); padding: 0.8rem 0.9rem; display: flex; flex-direction: column; gap: 0.15rem; }
+  .metric b {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.45rem;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+  .metric span { color: var(--muted); font-size: 0.82rem; }
+
+  figure { margin: 1.4rem 0 0; display: flex; flex-direction: column; gap: 0.55rem; }
+  figure img { width: 100%; max-width: 100%; display: block; border: 1px solid var(--rule); }
+  figcaption { color: var(--muted); font-size: 0.87rem; }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.9rem; min-width: 32rem; }
+  th, td { text-align: right; padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+  td.num, th.num { font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .good { color: var(--ok); }
+  .bad { color: var(--warn); }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 2.6rem 0 0; }
+  .foot { color: var(--muted); font-size: 0.85rem; }
+</style>
+
+<main>
+  <header>
+    <p class="eyebrow">Aurora backend · 4×V100 · 29 июля 2026</p>
+    <h1>Что измерено, а не предположено</h1>
+    <p class="lede">Каждое число здесь взято из <code>bench/results/*.json</code>, который писал
+      <code>scripts/bench_suite.py</code>. Графики рисует <code>scripts/plot_bench.py</code> из тех же
+      файлов: ни одна цифра не вписана в код графиков руками.</p>
+  </header>
+
+  <h2>Микросервисы и Docker — нужны ли</h2>
+
+  <div class="verdict">
+    <p class="eyebrow">Ответ</p>
+    <p>Разбиение на микросервисы <b>не даст ускорения</b>, потому что то, ради чего его обычно делают,
+      уже сделано: модель живёт в процессе между запросами. Docker <b>нужен</b>, но не ради скорости —
+      ради привязки одного воркера к одной карте и перезапуска после OOM.</p>
+  </div>
+
+  <p>Цифра, на которой держится ответ. Холодный запрос на 4 шага (+24 ч) в fp16 занимает
+    <span class="num">46,9 с</span>, и <span class="num">26,1 с</span> из них — загрузка чекпоинта.
+    То есть <b>56% холодного запроса — это не счёт, а чтение весов с диска в память GPU</b>. Тот же
+    запрос к уже поднятому сервису стоит <span class="num">15,1 с</span>.</p>
+
+  <div class="metrics">
+    <div class="metric"><b>46 с</b><span>первый запрос к сервису</span></div>
+    <div class="metric"><b>15 с</b><span>каждый следующий</span></div>
+    <div class="metric"><b>3,1×</b><span>разница между ними</span></div>
+    <div class="metric"><b>3,9/мин</b><span>прогнозов на одной карте</span></div>
+  </div>
+
+  <figure>
+    <img src="charts/service.png" alt="Задержка первого и последующих запросов, и пропускная способность">
+    <figcaption>Левая панель — весь аргумент. Разрыв между столбцами — это ровно стоимость загрузки
+      чекпоинта. Любая архитектура, где контейнер поднимается под запрос и гасится после, платит эти
+      31 с каждый раз.</figcaption>
+  </figure>
+
+  <h3>Что именно выиграл бы или проиграл каждый вариант</h3>
+  <ul>
+    <li><b>Процесс на запрос</b> (как сейчас работает CLI) — минус 31 с на каждом запросе. Это худший
+      вариант из возможных.</li>
+    <li><b>Контейнер на запрос</b> — то же самое плюс старт контейнера. Docker сам по себе быстрый,
+      но чекпоинт всё равно грузится заново.</li>
+    <li><b>Микросервисы</b> (отдельно чтение zarr, отдельно инференс, отдельно запись) — добавляет
+      сетевой хоп и сериализацию тензора. Тензор входа — 69 × 720 × 1440 × 2 шага, это гигабайты
+      трафика между сервисами ради стадий, которые в сумме занимают <span class="num">2,9 с</span>
+      из 46,9. Делить нечего.</li>
+    <li><b>Резидентный воркер на карту в контейнере</b> — то, что уже реализовано в
+      <code>deploy/docker-compose.yml</code>. Контейнер здесь нужен не для скорости, а чтобы
+      <code>device_ids</code> жёстко привязал воркер к карте и чтобы после OOM рестартовал только
+      один воркер, а не весь сервис.</li>
+  </ul>
+
+  <h2>Точность: «потеряли 6–7%» — это не потеря точности</h2>
+
+  <div class="verdict warn">
+    <p class="eyebrow">Поправка к постановке</p>
+    <p>6–8% — это <b>расхождение между двумя прогонами</b> (fp32 против fp16), выраженное как доля от
+      собственной ошибки модели. Это не 6–8% потерянной точности. Собственная ошибка модели относительно
+      ERA5 в fp16 и fp32 отличается на <b>±0,5%, и знак разницы гуляет</b> — то есть это шум, а не
+      деградация.</p>
+  </div>
+
+  <figure>
+    <img src="charts/accuracy.png" alt="RMSE fp32 и fp16 относительно ERA5, и расхождение между ними">
+    <figcaption>Синяя и оранжевая кривые лежат друг на друге: обе точности ошибаются относительно ERA5
+      одинаково. Нижняя бордовая кривая — расстояние между самими прогонами. Серая пунктирная —
+      persistence, то есть «завтра будет как сегодня»; всё, что ниже неё, вообще имеет смысл.</figcaption>
+  </figure>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>поле</th><th class="num">срок</th><th class="num">RMSE fp32</th><th class="num">RMSE fp16</th><th class="num">разница</th><th class="num">расхождение</th></tr></thead>
+      <tbody>
+        <tr><td>2t (K)</td><td class="num">+24 ч</td><td class="num">0,705</td><td class="num">0,705</td><td class="num">+0,04%</td><td class="num">1,1%</td></tr>
+        <tr><td>2t (K)</td><td class="num">+120 ч</td><td class="num">1,682</td><td class="num">1,683</td><td class="num">+0,03%</td><td class="num">1,4%</td></tr>
+        <tr><td>2t (K)</td><td class="num">+240 ч</td><td class="num">2,808</td><td class="num">2,804</td><td class="num good">−0,13%</td><td class="num">7,1%</td></tr>
+        <tr><td>msl (Pa)</td><td class="num">+24 ч</td><td class="num">51,65</td><td class="num">51,69</td><td class="num">+0,08%</td><td class="num">0,9%</td></tr>
+        <tr><td>msl (Pa)</td><td class="num">+240 ч</td><td class="num">687,6</td><td class="num">686,9</td><td class="num good">−0,10%</td><td class="num">5,2%</td></tr>
+        <tr><td>t500 (K)</td><td class="num">+24 ч</td><td class="num">0,438</td><td class="num">0,438</td><td class="num">+0,03%</td><td class="num">1,3%</td></tr>
+        <tr><td>t500 (K)</td><td class="num">+240 ч</td><td class="num">3,585</td><td class="num">3,595</td><td class="num bad">+0,28%</td><td class="num">6,0%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="foot">Инициализация 2026-05-01, 40 шагов. Вторая инициализация (2026-06-01) даёт ту же
+    картину: максимум по модулю <span class="num">0,45%</span>, и снова со сменой знака. Обе есть в
+    <code>bench/results/accuracy.json</code>.</p>
+
+  <figure>
+    <img src="charts/divergence.png" alt="Расхождение fp32/fp16 как доля от собственной ошибки модели">
+    <figcaption>То же расхождение, но в отношении к ошибке модели. На сутки вперёд fp16 отличается от
+      fp32 на процент от того, на сколько модель и так промахивается. К десятым суткам — на 5–8%.
+      Порядок величины разный, и это главное.</figcaption>
+  </figure>
+
+  <h3>fp8 — не вариант на этой машине</h3>
+  <p>V100 — это compute capability <span class="num">7.0</span>. Тензорные ядра там умеют fp16 и не
+    умеют ни bf16, ни fp8: fp8 появился в Hopper (CC 8.9+, H100). Дело не в версии PyTorch — этих
+    инструкций физически нет в железе. Чтобы попробовать fp8, нужна другая карта.</p>
+  <p>Отдельно: у fp16 узкий диапазон, максимум <span class="num">65504</span>. Геопотенциал
+    <code>z</code> доходит до <span class="num">2,04·10⁵</span> — это выше потолка. Проверено, что
+    все 69 каналов на +240 ч конечны: <code>torch.autocast</code> держит такие тензоры в fp32 и
+    переводит в fp16 только те операции, где это безопасно. Именно поэтому используется
+    <code>autocast</code>, а не <code>model.half()</code>.</p>
+
+  <h2>Скорость: куда уходит запрос</h2>
+
+  <figure>
+    <img src="charts/stages.png" alt="Разложение запроса по стадиям для трёх вариантов">
+    <figcaption>Среднее по четырём инициализациям. Серый низ — загрузка чекпоинта, одинаковая у всех
+      трёх вариантов: её не ускорить точностью, её можно только не платить повторно.</figcaption>
+  </figure>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>вариант</th><th class="num">загрузка</th><th class="num">чтение</th><th class="num">forward, 4 шага</th><th class="num">шаг (устойч.)</th><th class="num">запись</th><th class="num">всего</th><th class="num">пик VRAM</th></tr></thead>
+      <tbody>
+        <tr><td>fp32</td><td class="num">24,4 с</td><td class="num">1,23 с</td><td class="num">31,9 с</td><td class="num">7,92 с</td><td class="num">1,58 с</td><td class="num">66,1 с</td><td class="num">23,9 GiB</td></tr>
+        <tr><td>fp16</td><td class="num">26,1 с</td><td class="num">1,21 с</td><td class="num">11,0 с</td><td class="num good">2,64 с</td><td class="num">1,68 с</td><td class="num good">46,9 с</td><td class="num">19,0 GiB</td></tr>
+        <tr><td>fp16 + compile</td><td class="num">25,6 с</td><td class="num">1,24 с</td><td class="num">73,8 с</td><td class="num bad">3,10 с</td><td class="num">1,60 с</td><td class="num bad">112,0 с</td><td class="num good">16,2 GiB</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><b>fp16 даёт 3,0× на шаге</b> (7,92 → 2,64 с) и экономит 4,9 GiB. Это чистый выигрыш, потому что
+    точность, как показано выше, не меняется.</p>
+
+  <div class="verdict warn">
+    <p class="eyebrow">Отдельная проверка</p>
+    <p><code>torch.compile</code> <b>не окупается на любом осмысленном прогнозе</b>. Его шаг
+      действительно быстрее — <span class="num">2,10 с</span> против
+      <span class="num">2,65 с</span>, — но выходит он на этот режим только к девятому шагу, заплатив
+      <span class="num">64,6 с</span> за трассировку и ещё серию медленных шагов на перекомпиляции.
+      Отставание после 20 шагов — <span class="num">57,4 с</span>, отыгрывается по 0,54 с за шаг:
+      <b>точка окупаемости — 126-й шаг, то есть прогноз на 755 часов</b>. Практический максимум —
+      40 шагов (10 суток). Единственное, что compile даёт реально, — самый низкий пик памяти,
+      <span class="num">16,2 GiB</span> против 19,0.</p>
+  </div>
+
+  <p class="foot">На таблицу выше стоит смотреть с оговоркой: там 4 шага, и «устойчивый шаг» compile
+    (3,10 с) — это медиана по трём точкам, две из которых ещё перекомпиляция. Правильный ответ дал
+    отдельный прогон на 20 шагов: <span class="num">64,6 · 3,96 · 2,32 · 2,34 · 3,15 · 3,15 · 3,00 ·
+    3,11 · 2,11 · 2,09 …</span> — плато начинается с девятого шага. Короткий замер здесь врал в обе
+    стороны, и это само по себе результат: медиану по трём точкам нельзя называть установившимся
+    режимом.</p>
+
+  <figure>
+    <img src="charts/perstep.png" alt="Стоимость одного шага и её изменение от шага к шагу">
+    <figcaption>Правая панель в логарифме, иначе трассировка compile не помещается на одну ось с
+      остальными. Виден и второй горб — перекомпиляция на шаге 2.</figcaption>
+  </figure>
+
+  <figure>
+    <img src="charts/memory.png" alt="Пик VRAM по вариантам">
+    <figcaption>Запас до 32 ГБ карты решает, сколько воркеров помещается. Ни один вариант не помещается
+      дважды: два fp16-прогноза на одной V100 не работают медленно, они падают с OOM.</figcaption>
+  </figure>
+
+  <h2>Чтение zarr</h2>
+
+  <figure>
+    <img src="charts/read.png" alt="Скорость чтения и доля лишних прочитанных данных">
+    <figcaption>Пропускная способность держится около 1 ГБ/с на любом объёме. Проблема не в скорости,
+      а в форме запроса.</figcaption>
+  </figure>
+
+  <p>Нарезка на чанки сделана под то, как модель ест данные: чанк на (момент, уровень), то есть карта
+    целиком. Для прогноза это правильно — <span class="num">1,1 с</span> на весь архив по одному полю.
+    Но запрос «температура в одной точке за весь архив» вынужден прочитать
+    <span class="num">1442 МБ</span>, чтобы вернуть <span class="num">1,4 КБ</span>: коэффициент
+    лишнего — <b>около миллиона</b>. Если по этим данным нужны временные ряды в точке, потребуется
+    вторая раскладка того же массива; переделывать текущую под оба сценария нельзя, они противоположны.</p>
+
+  <h2>Обрывы SSH</h2>
+
+  <div class="verdict">
+    <p class="eyebrow">Причина найдена</p>
+    <p>Соединение убивает <b>не сервер, а путь</b>. Молчащая сессия умирает ровно через
+      <span class="num">600 с</span> тишины; та же сессия с <code>ServerAliveInterval=15</code>
+      прожила 900 с и вернулась нормально. Клиентский keepalive — правильное лекарство, и оно уже
+      прописано в <code>~/.ssh/config</code>.</p>
+  </div>
+
+  <p>Гипотез было две, и у них противоположные исправления. Либо промежуточное оборудование (NAT,
+    фаервол, край провайдера) сбрасывает TCP-поток, по которому не идут пакеты — тогда помогает
+    keepalive на клиенте. Либо сессию закрывает сам <code>sshd</code> — тогда keepalive бесполезен, и
+    чинить надо на сервере. Эксперимент разделяет их: 12 соединений, шесть длительностей тишины ×
+    keepalive вкл/выкл, каждое просто спит и ничего не печатает.</p>
+
+  <figure>
+    <img src="charts/ssh.png" alt="Выживаемость молчащих SSH-соединений">
+    <figcaption>Все ячейки до 480 с живут в обоих столбцах. На 900 с столбец без keepalive умирает —
+      и умирает не на 900-й секунде, а на 600-й. Столбец с keepalive проходит целиком.</figcaption>
+  </figure>
+
+  <p>Три детали, которые вместе указывают на путь, а не на сервер. Во-первых, 600 с — круглые десять
+    минут, типичный idle-таймаут NAT, а не значение из <code>sshd_config</code>. Во-вторых, в
+    <code>sshd_config</code> нет ни одной раскомментированной строки
+    <code>ClientAlive*</code>: по умолчанию <code>ClientAliveInterval=0</code>, то есть сервер сам
+    вообще не проверяет клиента и не закрывает сессии по тишине. В-третьих, сообщение
+    <code>Connection closed by remote host</code> с кодом 255 — это то, что клиент печатает, когда
+    поток разорван снаружи.</p>
+
+  <p>Это ровно объясняет, какие команды падали: длинные прогоны, которые ничего не печатают —
+    ожидание файла, 40-шаговый rollout, — а короткие не падали никогда. Заодно в конфиг добавлено
+    мультиплексирование (<code>ControlMaster</code>): второе и последующие подключения к машине
+    переиспользуют один TCP-канал, и вместо <span class="num">1,94 с</span> на команду уходит
+    <span class="num">0,38 с</span>.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>тишина</th><th class="num">без keepalive</th><th class="num">ServerAliveInterval=15</th></tr></thead>
+      <tbody>
+        <tr><td>30 с</td><td class="num good">жива</td><td class="num good">жива</td></tr>
+        <tr><td>60 с</td><td class="num good">жива</td><td class="num good">жива</td></tr>
+        <tr><td>120 с</td><td class="num good">жива</td><td class="num good">жива</td></tr>
+        <tr><td>240 с</td><td class="num good">жива</td><td class="num good">жива</td></tr>
+        <tr><td>480 с</td><td class="num good">жива</td><td class="num good">жива</td></tr>
+        <tr><td>900 с</td><td class="num bad">умерла на 600 с, rc=255</td><td class="num good">жива</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="foot">По одному соединению на ячейку: это ограничение эксперимента, а не результат. Всплеск
+    из двенадцати парольных логинов подряд для любой системы мониторинга выглядит как перебор пароля,
+    поэтому соединения разнесены по времени и их количество ограничено. Граница таймаута локализована
+    как «между 480 и 900 с тишины», и уточнена до 600 с моментом смерти самого соединения.</p>
+
+  <h2>Что не измерено и почему</h2>
+  <div class="verdict warn">
+    <p class="eyebrow">Честный пробел</p>
+    <p>Машина общая. Во время этих измерений другой пользователь держал <b>три карты из четырёх</b>
+      (20,9 / 17,7 / 31,1 GiB заняты, две на 100% загрузки), load average 5,8 из 16 ядер. Поэтому не
+      измерены <b>4 воркера</b> и <b>конкурентная нагрузка</b>: fp16-прогнозу нужно 19 GiB, а свободная
+      карта была одна. Запуск в таких условиях измерил бы чужую кампанию, а не масштабирование.</p>
+    <p>Чтобы это не повторилось молча: <code>bench_all.sh</code> теперь считает свободные карты и
+      пропускает эти два режима с записью причины, а каждая запись в JSON несёт снимок состояния
+      машины (<code>box_before</code> / <code>box_after</code>) — занятость карт и load average в
+      момент замера.</p>
+  </div>
+
+  <hr>
+  <p class="foot">Воспроизводится одной командой: <code>./scripts/bench_all.sh</code> на машине с
+    картами, затем <code>python -m scripts.plot_bench</code> локально.</p>
+</main>
