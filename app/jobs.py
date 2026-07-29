@@ -21,7 +21,7 @@ import uuid
 from . import batch_builder, config, postprocess
 from .era5_store import ERA5Store
 from .inference import AuroraEngine
-from .registry import Job, Registry, Status, store_size
+from .registry import Job, Registry, Status, store_size, utc_now
 
 __all__ = ["ForecastService", "Job", "Status"]
 
@@ -112,7 +112,7 @@ class ForecastService:
                     status="done",
                     output=str(path),
                     size_bytes=store_size(path),
-                    last_access=dt.datetime.utcnow().isoformat(timespec="seconds"),
+                    last_access=utc_now(),
                 )
                 # Checked after every finished forecast rather than on a timer:
                 # this is the only moment the total can have grown.

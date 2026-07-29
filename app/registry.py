@@ -71,8 +71,17 @@ class Job:
         return self.steps * config.STEP_HOURS
 
 
-def _now() -> str:
-    return dt.datetime.utcnow().isoformat(timespec="seconds")
+def utc_now() -> str:
+    """UTC, spelled without `utcnow()`, and naive on purpose.
+
+    `datetime.utcnow()` is deprecated as of the Python 3.12 this service now
+    runs on. The replacement is tz-aware, and an aware `isoformat()` carries a
+    `+00:00` the rows already in registry.db do not have — which would compare
+    unequal to itself and defeat the dedup lookup on `init_time`, whose value
+    comes from a request the API deliberately makes naive. So drop the tzinfo
+    again: same string as before, no warning.
+    """
+    return dt.datetime.now(dt.UTC).replace(tzinfo=None).isoformat(timespec="seconds")
 
 
 def _row_to_job(row: sqlite3.Row) -> Job:
@@ -131,7 +140,7 @@ class Registry:
     # ------------------------------------------------------------------ write
 
     def add(self, job: Job) -> Job:
-        now = _now()
+        now = utc_now()
         job.created = dt.datetime.fromisoformat(now)
         job.last_access = job.created
         with self._lock:
@@ -172,7 +181,7 @@ class Registry:
         that is read every day is worth more than yesterday's that nobody
         asked for.
         """
-        self.update(job_id, last_access=_now())
+        self.update(job_id, last_access=utc_now())
 
     # ------------------------------------------------------------------- read
 
