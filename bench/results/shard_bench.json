@@ -1,0 +1,60 @@
+{
+  "source_store": "bench/scratch/py312-blosc/forecast_20260405T0000_024h.zarr",
+  "steps": 4,
+  "raw_mb_in_memory": 1091.6,
+  "europe": "latitude 72..34, longitude -25..45",
+  "read_via": "xr.open_zarr, i.e. dask arrays chunked to match the store",
+  "caveat": "These read numbers are mostly dask, not zarr. Tiling the store 16x multiplies the dask graph by 16, which is why the full read goes 1.37 -> 9.20 s. tile_probe.json repeats the measurement through zarr directly and the same layout reads in 0.33 s. Keep this file for the write and file-count columns; take the read verdict from tile_probe.json.",
+  "confirmed": "`shards` does survive the xarray encoding layer - the store's own zarr.json lists a single `sharding_indexed` codec, checked rather than inferred.",
+  "layouts": {
+    "map chunk (today)": {
+      "mb": 744.5,
+      "files": 297,
+      "write_s": 1.24,
+      "full_s": 1.366,
+      "europe_s": 0.614,
+      "one_map_ms": 6.8,
+      "point_s": 0.579,
+      "codecs": [
+        "bytes",
+        "blosc"
+      ]
+    },
+    "shard, 180x360 tiles": {
+      "mb": 747.1,
+      "files": 297,
+      "write_s": 2.92,
+      "full_s": 9.196,
+      "europe_s": 1.18,
+      "one_map_ms": 34.2,
+      "point_s": 0.569,
+      "codecs": [
+        "sharding_indexed"
+      ]
+    },
+    "shard, 90x180 tiles": {
+      "mb": 751.1,
+      "files": 297,
+      "write_s": 7.46,
+      "full_s": 33.229,
+      "europe_s": 3.29,
+      "one_map_ms": 113.7,
+      "point_s": 0.502,
+      "codecs": [
+        "sharding_indexed"
+      ]
+    },
+    "shard, 60x120 tiles": {
+      "mb": 754.7,
+      "files": 297,
+      "write_s": 16.3,
+      "full_s": 71.379,
+      "europe_s": 3.221,
+      "one_map_ms": 279.2,
+      "point_s": 0.533,
+      "codecs": [
+        "sharding_indexed"
+      ]
+    }
+  }
+}

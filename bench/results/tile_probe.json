@@ -1,0 +1,63 @@
+{
+  "source": "bench/scratch/py312-blosc/forecast_20260405T0000_024h.zarr",
+  "steps": 4,
+  "europe_index": "lat 72:224, lon 0:180 of 720x1440",
+  "note": "read through zarr directly - dask and the xarray cache both distort this measurement",
+  "layouts": {
+    "whole map": {
+      "mb": 744.5,
+      "files": 297,
+      "write_s": 1.22,
+      "full_t_s": 0.14,
+      "eu_t_s": 0.067,
+      "one_map_ms": 4.6,
+      "eu_all_vars_s": 0.3
+    },
+    "180x360 plain": {
+      "mb": 747.0,
+      "files": 4437,
+      "write_s": 3.69,
+      "full_t_s": 0.402,
+      "eu_t_s": 0.048,
+      "one_map_ms": 8.0,
+      "eu_all_vars_s": 0.286
+    },
+    "180x360 shard": {
+      "mb": 747.1,
+      "files": 297,
+      "write_s": 2.71,
+      "full_t_s": 0.325,
+      "eu_t_s": 0.081,
+      "one_map_ms": 7.2,
+      "eu_all_vars_s": 0.437
+    },
+    "90x180 plain": {
+      "mb": 750.8,
+      "files": 17685,
+      "write_s": 13.07,
+      "full_t_s": 1.513,
+      "eu_t_s": 0.067,
+      "one_map_ms": 26.0,
+      "eu_all_vars_s": 0.363
+    },
+    "90x180 shard": {
+      "mb": 751.1,
+      "files": 297,
+      "write_s": 6.71,
+      "full_t_s": 0.879,
+      "eu_t_s": 0.1,
+      "one_map_ms": 17.5,
+      "eu_all_vars_s": 0.662
+    },
+    "60x120 plain": {
+      "mb": 754.1,
+      "files": 39765,
+      "write_s": 28.46,
+      "full_t_s": 3.162,
+      "eu_t_s": 0.136,
+      "one_map_ms": 55.7,
+      "eu_all_vars_s": 0.674
+    }
+  },
+  "verdict": "Do not tile. The best case, 180x360 plain, buys 19 ms on a Europe cut of t and costs 0.26 s of full read, 2.5 s of write and 15x the files; across all 9 variables the cut is not faster at all (0.286 vs 0.300 s). Decode was never the bottleneck: 213 MB of t decodes in 67 ms, which is 3.2 GB/s. Sharding is strictly worse than plain tiles on every read and only wins back the file count, so on a local disk it buys nothing here. It would be the right tool against object storage, where 4437 GETs versus 297 is the whole cost.",
+  "where_the_time_actually_goes": "read_bench.py measured the Europe cut at 0.49 s through xr.open_zarr, which hands back dask arrays. The same cut through zarr directly is 0.30 s. Roughly 40% of what looked like decode cost is the dask graph. The slicing endpoint should read with chunks=None or through zarr, not through the default dask path."

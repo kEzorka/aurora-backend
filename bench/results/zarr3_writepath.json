@@ -1,0 +1,62 @@
+{
+  "source": "bench/scratch/py312-blosc/forecast_20260405T0000_024h.zarr",
+  "zarr": "3.2.1",
+  "default_async_concurrency": 10,
+  "note": "Steps replayed from an existing forecast, no GPU, so this is the write path alone. The zarr 2 row runs the same harness under .venv, which is the only fair baseline: the 0.40 vs 0.62 s/step in py312_zarr3.json came from the live pipeline and carries its overheads.",
+  "runs": {
+    "append zarr 2.18.3 (baseline)": {
+      "per_step_s": [0.284, 0.286, 0.274, 0.476],
+      "steady_mean_s": 0.345,
+      "codec": "numcodecs.Blosc(lz4, 5, shuffle)"
+    },
+    "append concurrency=default": {
+      "per_step_s": [
+        0.488,
+        0.48,
+        0.439,
+        0.444
+      ],
+      "steady_mean_s": 0.454
+    },
+    "append concurrency=4": {
+      "per_step_s": [
+        0.374,
+        0.39,
+        0.353,
+        0.371
+      ],
+      "steady_mean_s": 0.371
+    },
+    "append concurrency=16": {
+      "per_step_s": [
+        0.424,
+        0.444,
+        0.416,
+        0.386
+      ],
+      "steady_mean_s": 0.415
+    },
+    "append concurrency=64": {
+      "per_step_s": [
+        0.414,
+        0.444,
+        0.465,
+        0.422
+      ],
+      "steady_mean_s": 0.444
+    },
+    "region writes": {
+      "per_step_s": [
+        0.545,
+        0.967,
+        0.762,
+        1.52
+      ],
+      "mean_s": 0.949,
+      "roundtrip_matches": true,
+      "how": "template written with compute=False, then each lead_time filled by region={lead_time: slice(i, i+1)}",
+      "verdict": "works and round-trips exactly, so the requirements.txt warning is wrong on this half too. Costs 2.6x an append and only earns it if several processes write one store."
+    }
+  },
+  "decision": "set async.concurrency=4 on migration. zarr 3's default of 10 costs 0.109 s/step over zarr 2 in this harness; at 4 the gap is 0.026 s/step. The 0.22 s/step attributed to 'zarr 3's own write path' in py312_zarr3.json is therefore mostly a tunable default, not a cost of the format."
+}
