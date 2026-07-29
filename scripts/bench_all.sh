@@ -16,16 +16,30 @@ run() {
     "$PY" -u -m scripts.bench_suite "$@" || echo "!!! failed: $*"
 }
 
+# The box is shared. A card another user has 20 GiB on cannot hold an fp16
+# forecast's 19 GiB, so a multi-GPU run started under those conditions does not
+# measure scaling — it measures somebody else's campaign, and it OOMs. Count
+# the cards that are actually free and skip rather than produce that chart.
+free_gpus() {
+    nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits |
+        awk -F, '($2 - $1) > 22000 {n++} END {print n + 0}'
+}
+
 # The prioritised question: what a resident worker costs its caller, at one
 # worker and at four. Two runs because `service` appends — the 4-worker numbers
 # are only meaningful next to the 1-worker baseline.
-run service --workers 1 --steps 4 --rounds 3
-run service --workers 4 --steps 4 --rounds 3
+run service --workers 1 --gpus 1 --steps 4 --rounds 3
 
-# n=8 oversubscribes the four cards deliberately. Two fp16 forecasts on one
-# V100 do not run slowly, they run out of memory, and that failure is the
-# reason the compose file is one container per GPU.
-run concurrency --steps 4 --variant fp16
+N=$(free_gpus)
+if [ "$N" -ge 4 ]; then
+    run service --workers 4 --steps 4 --rounds 3
+    # n=8 oversubscribes the four cards deliberately. Two fp16 forecasts on one
+    # V100 do not run slowly, they run out of memory, and that failure is the
+    # reason the compose file is one container per GPU.
+    run concurrency --steps 4 --variant fp16
+else
+    echo "=== skipped: service --workers 4 and concurrency need 4 free GPUs, $N free"
+fi
 
 run read
 
