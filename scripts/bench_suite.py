@@ -234,7 +234,7 @@ def concurrency(args) -> list[dict]:
     ngpu = args.gpus
     records = []
 
-    for n in testset.CONCURRENCY:
+    for n in (args.levels or testset.CONCURRENCY):
         procs = []
         started = time.time()
         for i in range(n):
@@ -485,6 +485,10 @@ def main() -> int:
     k.add_argument("--steps", type=int, default=4)
     k.add_argument("--variant", default="fp16")
     k.add_argument("--gpus", type=int, default=4)
+    # Overridable because eight processes each loading a checkpoint is a lot of
+    # host RAM on a machine somebody else is also using: on a busy box the
+    # honest run is the small one, not none at all.
+    k.add_argument("--levels", type=int, nargs="+", default=None)
     k.add_argument("--out", default=str(RESULTS / "concurrency.json"))
 
     v = sub.add_parser("service")

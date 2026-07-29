@@ -132,41 +132,85 @@ def chart_stages(records) -> None:
     save(fig, "stages")
 
 
-def chart_perstep(records) -> None:
-    """Per-step forward cost, and what the compile warmup costs to get it."""
+def chart_perstep(records, longruns: dict | None = None) -> None:
+    """Per-step forward cost, and what the compile warmup costs to get it.
+
+    The compiled variant needs its own source. A four-step run does not reach a
+    steady state at all: the graph is still being recompiled at step 3, so the
+    median over steps 2..4 is a warmup number, and plotting it next to the two
+    eager variants would say the opposite of what the twenty-step run says.
+    """
+    longruns = longruns or {}
     variants = ["fp32", "fp16", "fp16+compile"]
+
+    def steady_of(v):
+        """Twenty steps where measured, four where that is all there is."""
+        if v in longruns:
+            return longruns[v]["forward_steady_s"], longruns[v]["steps"]
+        rs = [r for r in records if r["variant"] == v and r["steps"] == 4]
+        return float(np.mean([r["forward_steady_s"] for r in rs])), 4
+
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.4),
                              gridspec_kw={"width_ratios": [1.15, 1]})
 
     ax = axes[0]
-    steady = [np.mean([r["forward_steady_s"] for r in records
-                       if r["variant"] == v and r["steps"] == 4]) for v in variants]
-    bars = ax.bar(variants, steady, color=[COLOR[v] for v in variants],
-                  width=0.55)
-    base = steady[0]
-    for b, val in zip(bars, steady):
-        ax.text(b.get_x() + b.get_width() / 2, val + 0.15, f"{val:.2f} s",
+    steady = [steady_of(v) for v in variants]
+    vals = [s for s, _ in steady]
+    bars = ax.bar(variants, vals, color=[COLOR[v] for v in variants], width=0.55)
+    base = vals[0]
+    ax.set_xticks(range(len(variants)),
+                  [f"{v}\nover {n} steps" for v, (_, n) in zip(variants, steady)])
+    for b, (val, n) in zip(bars, steady):
+        ax.text(b.get_x() + b.get_width() / 2, val + 0.18, f"{val:.2f} s",
                 ha="center", color=INK, fontsize=10, fontweight="600")
         if val != base:
             ax.text(b.get_x() + b.get_width() / 2, val / 2,
                     f"{base / val:.2f}x", ha="center", color="white",
                     fontsize=12, fontweight="700")
-    ax.set_ylim(0, max(steady) * 1.2)
+
+    # The number a short sweep would have reported for the compiled variant,
+    # drawn hollow so it cannot be mistaken for a measurement of steady state.
+    short = [r["forward_steady_s"] for r in records
+             if r["variant"] == "fp16+compile" and r["steps"] == 4]
+    if short and "fp16+compile" in longruns:
+        x = bars[2].get_x() + bars[2].get_width() / 2
+        ax.bar([x], [float(np.mean(short))], width=0.55, facecolor="none",
+               edgecolor=COLOR["fp16+compile"], linewidth=1.3, linestyle=":")
+        ax.annotate(f"a 4-step run reports {np.mean(short):.2f} s here —\n"
+                    "at step 3 the graph is still recompiling",
+                    xy=(x - 0.3, float(np.mean(short))), xytext=(0.62, max(vals) * 0.72),
+                    color=MUTED, fontsize=8.5, ha="left", va="center",
+                    arrowprops=dict(arrowstyle="-", color=MUTED, linewidth=0.8))
+    ax.set_ylim(0, max(vals) * 1.25)
     style(ax, "Steady-state forward, one rollout step",
           "median over steps 2..n, so no warmup is counted")
     ax.set_ylabel("seconds per step", color=MUTED, fontsize=9.5)
 
     ax = axes[1]
-    for v in variants:
-        rs = [r for r in records if r["variant"] == v and r["steps"] == 4]
-        curves = np.array([r["forward_s"] for r in rs])
-        mean = curves.mean(axis=0)
-        ax.plot(range(1, len(mean) + 1), mean, "o-", color=COLOR[v], label=v,
-                linewidth=2, markersize=5)
+    if longruns:
+        for v in ("fp16", "fp16+compile"):
+            if v not in longruns:
+                continue
+            fwd = longruns[v]["forward_s"]
+            ax.plot(range(1, len(fwd) + 1), fwd, "o-", color=COLOR[v], label=v,
+                    linewidth=1.8, markersize=4)
+        ax.set_xticks([1, 5, 10, 15, 20])
+        sub = "20 steps, log scale — compile settles only from step 9"
+    else:
+        for v in variants:
+            rs = [r for r in records if r["variant"] == v and r["steps"] == 4]
+            mean = np.array([r["forward_s"] for r in rs]).mean(axis=0)
+            ax.plot(range(1, len(mean) + 1), mean, "o-", color=COLOR[v], label=v,
+                    linewidth=2, markersize=5)
+        ax.set_xticks([1, 2, 3, 4])
+        sub = "log scale — the compile warmup is a different order of magnitude"
     ax.set_yscale("log")
-    ax.set_xticks([1, 2, 3, 4])
-    style(ax, "The same, step by step",
-          "log scale — the compile warmup is a different order of magnitude")
+    # Explicit ticks: the default log locator litters the axis with 3×10⁰-style
+    # minor labels that say nothing about a 2 s / 65 s contrast.
+    ax.minorticks_off()
+    ax.set_yticks([2, 3, 5, 10, 20, 40, 65])
+    ax.set_yticklabels(["2 s", "3 s", "5 s", "10 s", "20 s", "40 s", "65 s"])
+    style(ax, "The same, step by step", sub)
     ax.set_xlabel("rollout step", color=MUTED, fontsize=9.5)
     ax.set_ylabel("seconds", color=MUTED, fontsize=9.5)
     ax.legend(frameon=False, fontsize=9, labelcolor=INK)
@@ -403,12 +447,69 @@ def chart_service(records) -> None:
     save(fig, "service")
 
 
+def chart_ssh(records) -> None:
+    """Which SSH connections survived being silent, with and without keepalive.
+
+    The whole diagnosis is in whether the two columns differ. A cell that dies
+    with keepalive off and lives with it on is a middlebox on the path timing
+    out an idle flow; a cell that dies in both is the server ending the
+    session, and no client option would have helped.
+    """
+    idles = sorted({r["idle_s"] for r in records})
+    kas = sorted({r["keepalive_s"] for r in records})
+    fig, ax = plt.subplots(figsize=(7.4, 3.6))
+
+    for row, ka in enumerate(kas):
+        for idle in idles:
+            cell = [r for r in records if r["idle_s"] == idle and r["keepalive_s"] == ka]
+            if not cell:
+                continue
+            r = cell[0]
+            ok = r["survived"]
+            ax.scatter(idle, row, s=260, marker="o" if ok else "X",
+                       color=COLOR["fp16+compile"] if ok else COLOR["divergence"],
+                       zorder=3)
+            if not ok:
+                # When it died matters more than that it died: the wall clock
+                # is where the timeout actually sits, and the cell's own
+                # duration is only an upper bound on it.
+                ax.text(idle, row - 0.22,
+                        f"rc={r['returncode']}\ndied at {r['wall_s']:.0f}s",
+                        ha="center", va="top", color=COLOR["divergence"],
+                        fontsize=8.5)
+
+    ax.set_xscale("log")
+    ax.minorticks_off()  # the log locator otherwise labels a 4x10^1 nobody asked for
+    ax.set_xticks(idles)
+    ax.set_xticklabels([f"{i}s" for i in idles])
+    ax.set_yticks(range(len(kas)))
+    ax.set_yticklabels(["keepalive off\n(OpenSSH default)" if ka == 0
+                        else f"ServerAliveInterval={ka}" for ka in kas])
+    ax.set_ylim(-0.6, len(kas) - 0.4)
+    ax.yaxis.grid(False)
+    ax.xaxis.grid(True, color=GRID, linewidth=0.8)
+    style(ax, "Does a silent SSH connection survive?",
+          "one connection per cell, sending nothing for the whole duration")
+    ax.set_xlabel("seconds of silence before the connection speaks again",
+                  color=MUTED, fontsize=9.5)
+    save(fig, "ssh")
+
+
 def main() -> int:
     print("charts:")
     stages = load("stages")
+    # The twenty-step runs, one file per variant, written by `case --steps 20`.
+    # They are single records rather than lists, and they are the only place a
+    # compiled steady state actually exists.
+    longruns = {}
+    for name in ("longrun", "longrun_fp16"):
+        path = RESULTS / f"{name}.json"
+        if path.exists():
+            rec = json.loads(path.read_text())
+            longruns[rec["variant"]] = rec
     if stages:
         chart_stages(stages)
-        chart_perstep(stages)
+        chart_perstep(stages, longruns)
         chart_memory(stages)
     svc = load("service")
     if svc:
@@ -423,6 +524,9 @@ def main() -> int:
     if acc:
         chart_accuracy(acc)
         chart_divergence_ratio(acc)
+    ssh = load("ssh")
+    if ssh:
+        chart_ssh(ssh)
     return 0
 
 

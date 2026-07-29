@@ -34,5 +34,68 @@
     "returncode": 0,
     "wall_s": 61.57616329193115,
     "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 120,
+    "keepalive_s": 0,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 121.8921000957489,
+    "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 120,
+    "keepalive_s": 15,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 121.67287397384644,
+    "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 240,
+    "keepalive_s": 0,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 241.63612484931946,
+    "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 240,
+    "keepalive_s": 15,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 241.6410617828369,
+    "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 900,
+    "keepalive_s": 15,
+    "survived": false,
+    "returncode": 255,
+    "wall_s": 651.5020260810852,
+    "stderr": "Connection to AURORA_HOST closed by remote host."
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 900,
+    "keepalive_s": 0,
+    "survived": false,
+    "returncode": 255,
+    "wall_s": 678.457916021347,
+    "stderr": "Connection to AURORA_HOST closed by remote host."
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 480,
+    "keepalive_s": 0,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 876.06898021698,
+    "stderr": ""
   }
 ]

@@ -41,6 +41,25 @@ else
     echo "=== skipped: service --workers 4 and concurrency need 4 free GPUs, $N free"
 fi
 
+# The hard limit, on one card: n=1 is the baseline, n=2 is the failure. Kept
+# outside the branch above because it needs one free card, not four, and the
+# answer it gives — one worker per GPU — is what makes the scaling question
+# mostly moot.
+if [ "$N" -ge 1 ]; then
+    run concurrency --gpus 1 --levels 1 2 --steps 4 --variant fp16 \
+        --out bench/results/oversubscribe.json
+fi
+
+# Twenty steps, one run per variant. Four steps are not enough for the compiled
+# graph to stop recompiling, so a short sweep reports compile as slower than
+# eager — that is warmup, not a steady state. Separate --out per variant because
+# `case --out` overwrites.
+INIT=2026-04-05T00
+run case --init "$INIT" --steps 20 --variant fp16 \
+    --out bench/results/longrun_fp16.json
+run case --init "$INIT" --steps 20 --variant fp16+compile \
+    --out bench/results/longrun.json
+
 run read
 
 # The 240 h pairs, fp32 as the reference and fp16 as the candidate. CPU only.
