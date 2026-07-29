@@ -367,7 +367,7 @@ def chart_service(records) -> None:
     ax.set_xticklabels([f"{n} worker{'s' if n > 1 else ''}" for n in counts])
     ax.xaxis.grid(False)
     style(ax, "What the caller waits",
-          "median over the requests in the round; the model stays resident between them")
+          "4-step forecast, fp16; the model stays resident between requests")
     ax.set_ylabel("seconds", color=MUTED, fontsize=9.5)
     ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper right")
 
@@ -381,6 +381,20 @@ def chart_service(records) -> None:
     for n, t in zip(counts, thr):
         ax.text(n, t, f"  {t:.1f}", color=INK, fontsize=9.5, va="center")
     ax.set_xticks(counts)
+    if len(counts) == 1:
+        # One point is not a scaling curve, and saying so on the chart is
+        # better than letting the dashed ideal line look like a measurement.
+        # The missing point needs three GPUs that another tenant is holding.
+        ideal = thr[0] * 4 / counts[0]
+        ax.plot([counts[0], 4], [thr[0], ideal], "--", color=MUTED, linewidth=1)
+        ax.plot([4], [ideal], "o", color=PAPER, markeredgecolor=MUTED, markersize=6)
+        ax.set_xlim(0.5, 4.6)
+        ax.set_ylim(0, ideal * 1.25)
+        ax.set_xticks([1, 4])
+        ax.annotate("not measured: three of the four\nGPUs were held by another user",
+                    xy=(4, ideal), xytext=(1.35, ideal * 0.78),
+                    color=MUTED, fontsize=9,
+                    arrowprops=dict(arrowstyle="->", color=MUTED, linewidth=1))
     style(ax, "Throughput of the service as it stands",
           "warm requests only, so no checkpoint load is counted")
     ax.set_xlabel("resident workers, one per GPU", color=MUTED, fontsize=9.5)

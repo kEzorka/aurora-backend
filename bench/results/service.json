@@ -1,0 +1,41 @@
+[
+  {
+    "kind": "service",
+    "round": 0,
+    "cold": true,
+    "workers": 1,
+    "port": 8100,
+    "init": "2026-04-05T00",
+    "tag": "interior",
+    "steps": 4,
+    "variant": "fp16",
+    "status": "done",
+    "latency_s": 46.38726019859314
+  },
+  {
+    "kind": "service",
+    "round": 1,
+    "cold": false,
+    "workers": 1,
+    "port": 8100,
+    "init": "2026-05-01T00",
+    "tag": "boundary-spring",
+    "steps": 4,
+    "variant": "fp16",
+    "status": "done",
+    "latency_s": 15.587207317352295
+  },
+  {
+    "kind": "service",
+    "round": 2,
+    "cold": false,
+    "workers": 1,
+    "port": 8100,
+    "init": "2026-06-01T00",
+    "tag": "boundary-summer",
+    "steps": 4,
+    "variant": "fp16",
+    "status": "done",
+    "latency_s": 15.082736730575562
+  }
+]

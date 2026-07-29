@@ -1,0 +1,758 @@
+[
+  {
+    "kind": "case",
+    "init": "2026-04-05T00",
+    "steps": 1,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.10912942886352539,
+    "read_s": 1.1048016548156738,
+    "load_s": 26.017083168029785,
+    "finish_s": 3.814697265625e-06,
+    "forward_s": [
+      8.168002843856812
+    ],
+    "to_cpu_s": [
+      0.23811674118041992
+    ],
+    "write_s": [
+      0.37059521675109863
+    ],
+    "forward_first_s": 8.168002843856812,
+    "forward_steady_s": 8.168002843856812,
+    "peak_gib": 23.061811923980713,
+    "output": "/home/kostya/aurora-backend/bench/scratch/interior-1-fp32/forecast_20260405T0000_006h.zarr",
+    "output_mb": 186.90475749969482,
+    "tag": "interior",
+    "wall_s": 41.7224702835083
+  },
+  {
+    "kind": "case",
+    "init": "2026-04-05T00",
+    "steps": 1,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.10208940505981445,
+    "read_s": 1.0525643825531006,
+    "load_s": 20.594062089920044,
+    "finish_s": 3.814697265625e-06,
+    "forward_s": [
+      3.0030155181884766
+    ],
+    "to_cpu_s": [
+      0.2505030632019043
+    ],
+    "write_s": [
+      0.3720359802246094
+    ],
+    "forward_first_s": 3.0030155181884766,
+    "forward_steady_s": 3.0030155181884766,
+    "peak_gib": 18.23236322402954,
+    "output": "/home/kostya/aurora-backend/bench/scratch/interior-1-fp16/forecast_20260405T0000_006h.zarr",
+    "output_mb": 186.4149341583252,
+    "tag": "interior",
+    "wall_s": 30.738643884658813
+  },
+  {
+    "kind": "case",
+    "init": "2026-04-05T00",
+    "steps": 1,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.10056376457214355,
+    "read_s": 1.0419230461120605,
+    "load_s": 23.077784538269043,
+    "finish_s": 4.291534423828125e-06,
+    "forward_s": [
+      62.01723527908325
+    ],
+    "to_cpu_s": [
+      0.23846650123596191
+    ],
+    "write_s": [
+      0.3668558597564697
+    ],
+    "forward_first_s": 62.01723527908325,
+    "forward_steady_s": 62.01723527908325,
+    "peak_gib": 14.835392475128174,
+    "output": "/home/kostya/aurora-backend/bench/scratch/interior-1-fp16_compile/forecast_20260405T0000_006h.zarr",
+    "output_mb": 186.57258129119873,
+    "tag": "interior",
+    "wall_s": 94.7696807384491
+  },
+  {
+    "kind": "case",
+    "init": "2026-04-05T00",
+    "steps": 4,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.10203742980957031,
+    "read_s": 1.051689863204956,
+    "load_s": 20.988582134246826,
+    "finish_s": 3.814697265625e-06,
+    "forward_s": [
+      8.182983160018921,
+      7.909314870834351,
+      7.933806657791138,
+      7.929123640060425
+    ],
+    "to_cpu_s": [
+      0.2495894432067871,
+      0.23372650146484375,
+      0.23170852661132812,
+      0.23025226593017578
+    ],
+    "write_s": [
+      0.3808472156524658,
+      0.3681626319885254,
+      0.3720815181732178,
+      0.36446309089660645
+    ],
+    "forward_first_s": 8.182983160018921,
+    "forward_steady_s": 7.929123640060425,
+    "peak_gib": 23.87291193008423,
+    "output": "/home/kostya/aurora-backend/bench/scratch/interior-4-fp32/forecast_20260405T0000_024h.zarr",
+    "output_mb": 746.5243091583252,
+    "tag": "interior",
+    "wall_s": 62.14285635948181
+  },
+  {
+    "kind": "case",
+    "init": "2026-04-05T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.10412263870239258,
+    "read_s": 1.0802958011627197,
+    "load_s": 20.64881205558777,
+    "finish_s": 4.0531158447265625e-06,
+    "forward_s": [
+      3.015498638153076,
+      2.6431875228881836,
+      2.6417007446289062,
+      2.6588196754455566
+    ],
+    "to_cpu_s": [
+      0.24968242645263672,
+      0.2288663387298584,
+      0.23396921157836914,
+      0.23038434982299805
+    ],
+    "write_s": [
+      0.388974666595459,
+      0.36661815643310547,
+      0.3777647018432617,
+      0.35439634323120117
+    ],
+    "forward_first_s": 3.015498638153076,
+    "forward_steady_s": 2.6431875228881836,
+    "peak_gib": 19.043463230133057,
+    "output": "/home/kostya/aurora-backend/bench/scratch/interior-4-fp16/forecast_20260405T0000_024h.zarr",
+    "output_mb": 744.5380849838257,
+    "tag": "interior",
+    "wall_s": 40.81181597709656
+  },
+  {
+    "kind": "case",
+    "init": "2026-04-05T00",
+    "steps": 4,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.10234546661376953,
+    "read_s": 1.0845847129821777,
+    "load_s": 22.653308868408203,
+    "finish_s": 5.7220458984375e-06,
+    "forward_s": [
+      60.79914999008179,
+      5.715825080871582,
+      3.060870885848999,
+      3.071728467941284
+    ],
+    "to_cpu_s": [
+      0.24115586280822754,
+      0.22543716430664062,
+      0.22165775299072266,
+      0.2235112190246582
+    ],
+    "write_s": [
+      0.37918543815612793,
+      0.377795934677124,
+      0.42589402198791504,
+      0.3670790195465088
+    ],
+    "forward_first_s": 60.79914999008179,
+    "forward_steady_s": 3.071728467941284,
+    "peak_gib": 16.1910982131958,
+    "output": "/home/kostya/aurora-backend/bench/scratch/interior-4-fp16_compile/forecast_20260405T0000_024h.zarr",
+    "output_mb": 745.205394744873,
+    "tag": "interior",
+    "wall_s": 107.46540665626526
+  },
+  {
+    "kind": "case",
+    "init": "2026-05-01T00",
+    "steps": 1,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.10224604606628418,
+    "read_s": 1.25254225730896,
+    "load_s": 20.858543395996094,
+    "finish_s": 3.0994415283203125e-06,
+    "forward_s": [
+      8.168142557144165
+    ],
+    "to_cpu_s": [
+      0.24988460540771484
+    ],
+    "write_s": [
+      0.38062524795532227
+    ],
+    "forward_first_s": 8.168142557144165,
+    "forward_steady_s": 8.168142557144165,
+    "peak_gib": 23.061811923980713,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-spring-1-fp32/forecast_20260501T0000_006h.zarr",
+    "output_mb": 186.7231101989746,
+    "tag": "boundary-spring",
+    "wall_s": 36.488415241241455
+  },
+  {
+    "kind": "case",
+    "init": "2026-05-01T00",
+    "steps": 1,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.13203883171081543,
+    "read_s": 1.074256420135498,
+    "load_s": 21.026984453201294,
+    "finish_s": 3.814697265625e-06,
+    "forward_s": [
+      3.021277904510498
+    ],
+    "to_cpu_s": [
+      0.2496950626373291
+    ],
+    "write_s": [
+      0.3919079303741455
+    ],
+    "forward_first_s": 3.021277904510498,
+    "forward_steady_s": 3.021277904510498,
+    "peak_gib": 18.23236322402954,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-spring-1-fp16/forecast_20260501T0000_006h.zarr",
+    "output_mb": 186.40686988830566,
+    "tag": "boundary-spring",
+    "wall_s": 31.5444974899292
+  },
+  {
+    "kind": "case",
+    "init": "2026-05-01T00",
+    "steps": 1,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.10595870018005371,
+    "read_s": 1.0616354942321777,
+    "load_s": 32.038151264190674,
+    "finish_s": 5.245208740234375e-06,
+    "forward_s": [
+      63.20051574707031
+    ],
+    "to_cpu_s": [
+      0.25217199325561523
+    ],
+    "write_s": [
+      0.4017360210418701
+    ],
+    "forward_first_s": 63.20051574707031,
+    "forward_steady_s": 63.20051574707031,
+    "peak_gib": 14.835392475128174,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-spring-1-fp16_compile/forecast_20260501T0000_006h.zarr",
+    "output_mb": 186.55061531066895,
+    "tag": "boundary-spring",
+    "wall_s": 105.67501711845398
+  },
+  {
+    "kind": "case",
+    "init": "2026-05-01T00",
+    "steps": 4,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.10990142822265625,
+    "read_s": 1.105900764465332,
+    "load_s": 26.833656549453735,
+    "finish_s": 4.0531158447265625e-06,
+    "forward_s": [
+      8.173834800720215,
+      7.895264625549316,
+      7.9204182624816895,
+      7.938776254653931
+    ],
+    "to_cpu_s": [
+      0.2568025588989258,
+      0.24248909950256348,
+      0.23925280570983887,
+      0.23760199546813965
+    ],
+    "write_s": [
+      0.3944127559661865,
+      0.40534377098083496,
+      0.38202452659606934,
+      0.3872714042663574
+    ],
+    "forward_first_s": 8.173834800720215,
+    "forward_steady_s": 7.9204182624816895,
+    "peak_gib": 23.87291193008423,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-spring-4-fp32/forecast_20260501T0000_024h.zarr",
+    "output_mb": 745.3071966171265,
+    "tag": "boundary-spring",
+    "wall_s": 68.37425374984741
+  },
+  {
+    "kind": "case",
+    "init": "2026-05-01T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.10088300704956055,
+    "read_s": 1.0847389698028564,
+    "load_s": 26.107913970947266,
+    "finish_s": 5.7220458984375e-06,
+    "forward_s": [
+      3.0341925621032715,
+      2.6500658988952637,
+      2.6333954334259033,
+      2.651472330093384
+    ],
+    "to_cpu_s": [
+      0.255615234375,
+      0.2393183708190918,
+      0.23832964897155762,
+      0.24060964584350586
+    ],
+    "write_s": [
+      0.4106748104095459,
+      0.40134620666503906,
+      0.44795656204223633,
+      0.4005162715911865
+    ],
+    "forward_first_s": 3.0341925621032715,
+    "forward_steady_s": 2.6500658988952637,
+    "peak_gib": 19.043463230133057,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-spring-4-fp16/forecast_20260501T0000_024h.zarr",
+    "output_mb": 743.9917345046997,
+    "tag": "boundary-spring",
+    "wall_s": 46.767303466796875
+  },
+  {
+    "kind": "case",
+    "init": "2026-05-01T00",
+    "steps": 4,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.10987281799316406,
+    "read_s": 1.1059060096740723,
+    "load_s": 25.315457820892334,
+    "finish_s": 5.4836273193359375e-06,
+    "forward_s": [
+      63.589423179626465,
+      4.841367721557617,
+      3.0299630165100098,
+      3.1008126735687256
+    ],
+    "to_cpu_s": [
+      0.2534759044647217,
+      0.23044443130493164,
+      0.23255109786987305,
+      0.23033666610717773
+    ],
+    "write_s": [
+      0.41570496559143066,
+      0.3916208744049072,
+      0.38025569915771484,
+      0.3807530403137207
+    ],
+    "forward_first_s": 63.589423179626465,
+    "forward_steady_s": 3.1008126735687256,
+    "peak_gib": 16.1910982131958,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-spring-4-fp16_compile/forecast_20260501T0000_024h.zarr",
+    "output_mb": 744.5773077011108,
+    "tag": "boundary-spring",
+    "wall_s": 112.43175768852234
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-01T00",
+    "steps": 1,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.11189103126525879,
+    "read_s": 1.2261433601379395,
+    "load_s": 23.053948402404785,
+    "finish_s": 3.337860107421875e-06,
+    "forward_s": [
+      8.191473722457886
+    ],
+    "to_cpu_s": [
+      0.26061582565307617
+    ],
+    "write_s": [
+      0.4025139808654785
+    ],
+    "forward_first_s": 8.191473722457886,
+    "forward_steady_s": 8.191473722457886,
+    "peak_gib": 23.061811923980713,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-summer-1-fp32/forecast_20260601T0000_006h.zarr",
+    "output_mb": 186.72035217285156,
+    "tag": "boundary-summer",
+    "wall_s": 39.18899846076965
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-01T00",
+    "steps": 1,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.1018059253692627,
+    "read_s": 1.0750155448913574,
+    "load_s": 21.785640716552734,
+    "finish_s": 3.5762786865234375e-06,
+    "forward_s": [
+      3.0080502033233643
+    ],
+    "to_cpu_s": [
+      0.2587587833404541
+    ],
+    "write_s": [
+      0.4017341136932373
+    ],
+    "forward_first_s": 3.0080502033233643,
+    "forward_steady_s": 3.0080502033233643,
+    "peak_gib": 18.23236322402954,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-summer-1-fp16/forecast_20260601T0000_006h.zarr",
+    "output_mb": 186.2662868499756,
+    "tag": "boundary-summer",
+    "wall_s": 31.983408451080322
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-01T00",
+    "steps": 1,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.10152077674865723,
+    "read_s": 1.1032023429870605,
+    "load_s": 22.454240083694458,
+    "finish_s": 5.4836273193359375e-06,
+    "forward_s": [
+      64.57158517837524
+    ],
+    "to_cpu_s": [
+      0.24955439567565918
+    ],
+    "write_s": [
+      0.40815091133117676
+    ],
+    "forward_first_s": 64.57158517837524,
+    "forward_steady_s": 64.57158517837524,
+    "peak_gib": 14.835392475128174,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-summer-1-fp16_compile/forecast_20260601T0000_006h.zarr",
+    "output_mb": 186.42655754089355,
+    "tag": "boundary-summer",
+    "wall_s": 97.49867391586304
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-01T00",
+    "steps": 4,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.11326384544372559,
+    "read_s": 1.2325458526611328,
+    "load_s": 29.363664388656616,
+    "finish_s": 3.5762786865234375e-06,
+    "forward_s": [
+      8.213613271713257,
+      7.882109642028809,
+      7.894073247909546,
+      7.921885013580322
+    ],
+    "to_cpu_s": [
+      0.25599169731140137,
+      0.2463371753692627,
+      0.23940157890319824,
+      0.2377452850341797
+    ],
+    "write_s": [
+      0.4234447479248047,
+      0.4635498523712158,
+      0.4447357654571533,
+      0.396148681640625
+    ],
+    "forward_first_s": 8.213613271713257,
+    "forward_steady_s": 7.894073247909546,
+    "peak_gib": 23.87291193008423,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-summer-4-fp32/forecast_20260601T0000_024h.zarr",
+    "output_mb": 745.2181701660156,
+    "tag": "boundary-summer",
+    "wall_s": 71.81041145324707
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-01T00",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.10881829261779785,
+    "read_s": 1.1659610271453857,
+    "load_s": 28.668426752090454,
+    "finish_s": 3.0994415283203125e-06,
+    "forward_s": [
+      3.060331106185913,
+      2.630017042160034,
+      2.6379425525665283,
+      2.6403968334198
+    ],
+    "to_cpu_s": [
+      0.2613098621368408,
+      0.22890424728393555,
+      0.24316191673278809,
+      0.2427515983581543
+    ],
+    "write_s": [
+      0.44985222816467285,
+      0.3846442699432373,
+      0.4287443161010742,
+      0.41939473152160645
+    ],
+    "forward_first_s": 3.060331106185913,
+    "forward_steady_s": 2.6379425525665283,
+    "peak_gib": 19.043463230133057,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-summer-4-fp16/forecast_20260601T0000_024h.zarr",
+    "output_mb": 743.3697490692139,
+    "tag": "boundary-summer",
+    "wall_s": 49.62186312675476
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-01T00",
+    "steps": 4,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.10407710075378418,
+    "read_s": 1.0581889152526855,
+    "load_s": 22.944579362869263,
+    "finish_s": 4.76837158203125e-06,
+    "forward_s": [
+      61.32335305213928,
+      4.761813163757324,
+      3.0453574657440186,
+      2.986950159072876
+    ],
+    "to_cpu_s": [
+      0.24785995483398438,
+      0.246795654296875,
+      0.24445199966430664,
+      0.22879624366760254
+    ],
+    "write_s": [
+      0.38469815254211426,
+      0.3813190460205078,
+      0.38884949684143066,
+      0.3641695976257324
+    ],
+    "forward_first_s": 61.32335305213928,
+    "forward_steady_s": 3.0453574657440186,
+    "peak_gib": 16.1910982131958,
+    "output": "/home/kostya/aurora-backend/bench/scratch/boundary-summer-4-fp16_compile/forecast_20260601T0000_024h.zarr",
+    "output_mb": 744.0349245071411,
+    "tag": "boundary-summer",
+    "wall_s": 107.23371171951294
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-15T12",
+    "steps": 1,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.10183548927307129,
+    "read_s": 1.5464346408843994,
+    "load_s": 21.734041452407837,
+    "finish_s": 3.814697265625e-06,
+    "forward_s": [
+      8.186721324920654
+    ],
+    "to_cpu_s": [
+      0.24822068214416504
+    ],
+    "write_s": [
+      0.38562893867492676
+    ],
+    "forward_first_s": 8.186721324920654,
+    "forward_steady_s": 8.186721324920654,
+    "peak_gib": 23.061811923980713,
+    "output": "/home/kostya/aurora-backend/bench/scratch/midday-1-fp32/forecast_20260615T1200_006h.zarr",
+    "output_mb": 186.93699073791504,
+    "tag": "midday",
+    "wall_s": 37.61336040496826
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-15T12",
+    "steps": 1,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.10128903388977051,
+    "read_s": 1.1079232692718506,
+    "load_s": 22.25156307220459,
+    "finish_s": 3.337860107421875e-06,
+    "forward_s": [
+      3.006242036819458
+    ],
+    "to_cpu_s": [
+      0.24736833572387695
+    ],
+    "write_s": [
+      0.3773651123046875
+    ],
+    "forward_first_s": 3.006242036819458,
+    "forward_steady_s": 3.006242036819458,
+    "peak_gib": 18.23236322402954,
+    "output": "/home/kostya/aurora-backend/bench/scratch/midday-1-fp16/forecast_20260615T1200_006h.zarr",
+    "output_mb": 186.45767402648926,
+    "tag": "midday",
+    "wall_s": 32.46980357170105
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-15T12",
+    "steps": 1,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.10105609893798828,
+    "read_s": 1.0857510566711426,
+    "load_s": 21.803807497024536,
+    "finish_s": 5.4836273193359375e-06,
+    "forward_s": [
+      62.61387777328491
+    ],
+    "to_cpu_s": [
+      0.24575495719909668
+    ],
+    "write_s": [
+      0.38486766815185547
+    ],
+    "forward_first_s": 62.61387777328491,
+    "forward_steady_s": 62.61387777328491,
+    "peak_gib": 14.835392475128174,
+    "output": "/home/kostya/aurora-backend/bench/scratch/midday-1-fp16_compile/forecast_20260615T1200_006h.zarr",
+    "output_mb": 186.6442813873291,
+    "tag": "midday",
+    "wall_s": 94.47356081008911
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-15T12",
+    "steps": 4,
+    "variant": "fp32",
+    "device": "cuda:0",
+    "index_s": 0.10079574584960938,
+    "read_s": 1.098496675491333,
+    "load_s": 20.60598111152649,
+    "finish_s": 4.5299530029296875e-06,
+    "forward_s": [
+      8.168220043182373,
+      7.976209402084351,
+      7.907506465911865,
+      7.93018651008606
+    ],
+    "to_cpu_s": [
+      0.24617528915405273,
+      0.23242712020874023,
+      0.22513127326965332,
+      0.22473597526550293
+    ],
+    "write_s": [
+      0.3795766830444336,
+      0.38045430183410645,
+      0.3831491470336914,
+      0.38271117210388184
+    ],
+    "forward_first_s": 8.168220043182373,
+    "forward_steady_s": 7.93018651008606,
+    "peak_gib": 23.87291193008423,
+    "output": "/home/kostya/aurora-backend/bench/scratch/midday-4-fp32/forecast_20260615T1200_024h.zarr",
+    "output_mb": 746.2364835739136,
+    "tag": "midday",
+    "wall_s": 62.09826588630676
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-15T12",
+    "steps": 4,
+    "variant": "fp16",
+    "device": "cuda:0",
+    "index_s": 0.10318374633789062,
+    "read_s": 1.0897738933563232,
+    "load_s": 29.013348817825317,
+    "finish_s": 4.0531158447265625e-06,
+    "forward_s": [
+      3.1129493713378906,
+      2.64644455909729,
+      2.6405036449432373,
+      2.660742998123169
+    ],
+    "to_cpu_s": [
+      0.260983943939209,
+      0.2415790557861328,
+      0.24296236038208008,
+      0.2341010570526123
+    ],
+    "write_s": [
+      0.43941259384155273,
+      0.4681556224822998,
+      0.46514010429382324,
+      0.4998595714569092
+    ],
+    "forward_first_s": 3.1129493713378906,
+    "forward_steady_s": 2.64644455909729,
+    "peak_gib": 19.043463230133057,
+    "output": "/home/kostya/aurora-backend/bench/scratch/midday-4-fp16/forecast_20260615T1200_024h.zarr",
+    "output_mb": 744.3315277099609,
+    "tag": "midday",
+    "wall_s": 50.21606230735779
+  },
+  {
+    "kind": "case",
+    "init": "2026-06-15T12",
+    "steps": 4,
+    "variant": "fp16+compile",
+    "device": "cuda:0",
+    "index_s": 0.11040759086608887,
+    "read_s": 1.2747511863708496,
+    "load_s": 31.30364227294922,
+    "finish_s": 5.4836273193359375e-06,
+    "forward_s": [
+      64.76359176635742,
+      5.103477954864502,
+      3.173055648803711,
+      3.0225164890289307
+    ],
+    "to_cpu_s": [
+      0.2413005828857422,
+      0.23971986770629883,
+      0.25141191482543945,
+      0.22340011596679688
+    ],
+    "write_s": [
+      0.4076426029205322,
+      0.430483341217041,
+      0.4801814556121826,
+      0.46134519577026367
+    ],
+    "forward_first_s": 64.76359176635742,
+    "forward_steady_s": 3.173055648803711,
+    "peak_gib": 16.1910982131958,
+    "output": "/home/kostya/aurora-backend/bench/scratch/midday-4-fp16_compile/forecast_20260615T1200_024h.zarr",
+    "output_mb": 745.0693302154541,
+    "tag": "midday",
+    "wall_s": 120.7696282863617
+  }
+]

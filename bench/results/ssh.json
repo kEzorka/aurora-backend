@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "ssh",
+    "idle_s": 30,
+    "keepalive_s": 0,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 31.79058289527893,
+    "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 30,
+    "keepalive_s": 15,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 31.636356115341187,
+    "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 60,
+    "keepalive_s": 0,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 61.88916897773743,
+    "stderr": ""
+  },
+  {
+    "kind": "ssh",
+    "idle_s": 60,
+    "keepalive_s": 15,
+    "survived": true,
+    "returncode": 0,
+    "wall_s": 61.57616329193115,
+    "stderr": ""
+  }
+]

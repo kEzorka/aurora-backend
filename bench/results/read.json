@@ -1,0 +1,82 @@
+[
+  {
+    "kind": "read",
+    "query": "one map",
+    "description": "2t over the whole globe at one moment",
+    "seconds": 0.004076957702636719,
+    "touched_mb": 3.9605712890625,
+    "returned_mb": 3.9605712890625,
+    "waste": 1.0,
+    "mb_per_s": 971.4526315789474
+  },
+  {
+    "kind": "read",
+    "query": "one day",
+    "description": "2t over the whole globe, 4 moments",
+    "seconds": 0.014935016632080078,
+    "touched_mb": 15.84228515625,
+    "returned_mb": 15.84228515625,
+    "waste": 1.0,
+    "mb_per_s": 1060.7477411321477
+  },
+  {
+    "kind": "read",
+    "query": "one month",
+    "description": "2t over the whole globe, 120 moments",
+    "seconds": 0.4905116558074951,
+    "touched_mb": 475.2685546875,
+    "returned_mb": 475.2685546875,
+    "waste": 1.0,
+    "mb_per_s": 968.9240797042805
+  },
+  {
+    "kind": "read",
+    "query": "whole archive",
+    "description": "2t over the whole globe, 364 moments",
+    "seconds": 1.1300044059753418,
+    "touched_mb": 1441.64794921875,
+    "returned_mb": 1441.64794921875,
+    "waste": 1.0,
+    "mb_per_s": 1275.7896709034678
+  },
+  {
+    "kind": "read",
+    "query": "one point, whole archive",
+    "description": "2t at a single grid point, 364 moments",
+    "seconds": 0.734595775604248,
+    "touched_mb": 1441.64794921875,
+    "returned_mb": 0.0013885498046875,
+    "waste": 1038240.0,
+    "mb_per_s": 1962.5050906846152
+  },
+  {
+    "kind": "read",
+    "query": "one level, one month",
+    "description": "t at 500 hPa, 120 moments",
+    "seconds": 0.5282430648803711,
+    "touched_mb": 475.2685546875,
+    "returned_mb": 475.2685546875,
+    "waste": 1.0,
+    "mb_per_s": 899.7156541849386
+  },
+  {
+    "kind": "read",
+    "query": "all levels, one moment",
+    "description": "t on all 13 levels, one moment",
+    "seconds": 0.03604578971862793,
+    "touched_mb": 51.4874267578125,
+    "returned_mb": 51.4874267578125,
+    "waste": 1.0,
+    "mb_per_s": 1428.3894779313036
+  },
+  {
+    "kind": "read",
+    "query": "full input",
+    "description": "all 69 channels at one moment \u2014 what a forecast reads",
+    "seconds": 0.40195655822753906,
+    "touched_mb": 273.2794189453125,
+    "returned_mb": 273.2794189453125,
+    "waste": 1.0,
+    "mb_per_s": 679.8730194883767
+  }
+]
