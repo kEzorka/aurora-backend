@@ -237,14 +237,21 @@ def chart_memory(records) -> None:
 
 
 def chart_concurrency(records) -> None:
-    """The measurement the microservice question actually turns on."""
+    """The measurement the microservice question actually turns on.
+
+    A process that ran out of memory has no timings at all, so the curves are
+    drawn from the survivors — and the count of survivors is drawn next to
+    them, because at n=8 that count is the result.
+    """
     ns = sorted({r["concurrency"] for r in records})
+    survived = {n: [r for r in records
+                    if r["concurrency"] == n and "forward_s" in r] for n in ns}
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
 
     ax = axes[0]
     med, lo, hi = [], [], []
     for n in ns:
-        rs = [r for r in records if r["concurrency"] == n]
+        rs = survived[n]
         wall = [r["load_s"] + r["read_s"] + sum(r["forward_s"])
                 + sum(r["to_cpu_s"]) + sum(r["write_s"]) for r in rs]
         med.append(np.median(wall))
@@ -259,25 +266,44 @@ def chart_concurrency(records) -> None:
     for n, m in zip(ns, med):
         ax.text(n, m + (max(hi) - min(lo)) * 0.05, f"{m:.0f}s", ha="center",
                 color=INK, fontsize=9.5, fontweight="600")
+    dead = [n for n in ns if len(survived[n]) < n]
+    for n in dead:
+        ax.annotate(f"{n - len(survived[n])} of {n} died: out of memory.\n"
+                    "the survivor's latency is what is plotted",
+                    xy=(n, med[ns.index(n)]),
+                    xytext=(n - 0.3, max(hi) * 1.05), ha="right",
+                    color=COLOR["divergence"], fontsize=9,
+                    arrowprops=dict(arrowstyle="->", color=COLOR["divergence"],
+                                    linewidth=1))
     ax.set_xticks(ns)
-    ax.set_ylim(0, max(hi) * 1.2)
+    ax.set_ylim(0, max(hi) * 1.35)
     style(ax, "Latency of one request while others run",
           "band is fastest to slowest request in the same batch; 4 GPUs")
     ax.set_xlabel("concurrent requests", color=MUTED, fontsize=9.5)
     ax.set_ylabel("seconds", color=MUTED, fontsize=9.5)
 
     ax = axes[1]
+    # Throughput counts forecasts that finished, not requests that were sent.
+    # At n=8 those differ by seven, and counting sends would draw a rising
+    # curve out of a batch that mostly crashed.
     thr = []
     for n in ns:
-        rs = [r for r in records if r["concurrency"] == n]
-        thr.append(n / (rs[0]["batch_wall_s"] / 60))
+        wall = [r["batch_wall_s"] for r in records if r["concurrency"] == n][0]
+        thr.append(len(survived[n]) / (wall / 60))
     ax.plot(ns, thr, "o-", color=COLOR["fp16+compile"], linewidth=2, markersize=6)
     ax.plot(ns, [thr[0] * n for n in ns], "--", color=MUTED, linewidth=1,
             label="perfect scaling")
     for n, t in zip(ns, thr):
-        ax.text(n, t, f"  {t:.1f}", color=INK, fontsize=9.5, va="center")
+        ok = len(survived[n])
+        if ok == n:
+            ax.text(n, t, f"  {t:.1f}", color=INK, fontsize=9.5, va="center")
+        else:
+            # Last point on the axis: the label goes left, or it runs off.
+            ax.text(n, t, f"{t:.1f} — only {ok} of {n} finished  ",
+                    color=COLOR["divergence"], fontsize=9.5,
+                    va="center", ha="right")
     ax.set_xticks(ns)
-    style(ax, "Throughput", "forecasts finished per minute, 4 steps each")
+    style(ax, "Throughput", "forecasts that finished per minute, 4 steps each")
     ax.set_xlabel("concurrent requests", color=MUTED, fontsize=9.5)
     ax.set_ylabel("forecasts / minute", color=MUTED, fontsize=9.5)
     ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper left")
@@ -410,6 +436,7 @@ def chart_service(records) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels([f"{n} worker{'s' if n > 1 else ''}" for n in counts])
     ax.xaxis.grid(False)
+    ax.set_ylim(0, ax.get_ylim()[1] * 1.22)  # room for the legend above the bars
     style(ax, "What the caller waits",
           "4-step forecast, fp16; the model stays resident between requests")
     ax.set_ylabel("seconds", color=MUTED, fontsize=9.5)
@@ -425,6 +452,7 @@ def chart_service(records) -> None:
     for n, t in zip(counts, thr):
         ax.text(n, t, f"  {t:.1f}", color=INK, fontsize=9.5, va="center")
     ax.set_xticks(counts)
+    ax.set_xlim(min(counts) - 0.3, max(counts) + 0.5)
     if len(counts) == 1:
         # One point is not a scaling curve, and saying so on the chart is
         # better than letting the dashed ideal line look like a measurement.
