@@ -33,8 +33,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "bench" / "results" / "ssh.json"
 
-HOST = os.environ.get("AURORA_SSH_HOST", "AURORA_HOST")
+# No default. The address of the box this was written against used to sit here
+# as one, which put a live host and a valid username into every commit — the
+# password was never committed, but the pair is what makes a scan into an
+# attempt, and the box is shared. Nothing to fall back to now: set it, or the
+# script tells you to.
+HOST = os.environ.get("AURORA_SSH_HOST", "")
 PASSWORD = os.environ.get("AURORA_SSH_PASSWORD", "")
+
+if not HOST:
+    raise SystemExit(
+        "set AURORA_SSH_HOST=user@host (and AURORA_SSH_PASSWORD if the box "
+        "wants a password rather than a key)"
+    )
 
 IDLE_S = (30, 60, 120, 240, 480, 900)
 KEEPALIVE = (0, 15)  # ServerAliveInterval; 0 is OpenSSH's default, i.e. off

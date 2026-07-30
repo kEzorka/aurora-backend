@@ -30,30 +30,35 @@ cannot be recomputed on demand. Ranked by what an attacker gets:
 Audited 2026-07-30 over the full history (42 commits, all branches) and the
 serving path.
 
-### High — the API is unauthenticated and published on all interfaces
+### High — the API was unauthenticated and published on all interfaces — FIXED
 
-`app/api.py:3` documents `--host 0.0.0.0`, `deploy/Dockerfile:62` runs it that
-way, and `deploy/docker-compose.yml:41` publishes `8000:8000` through `8003`.
-Docker's port publishing inserts its rules into the `DOCKER` iptables chain,
-which is traversed **before** `INPUT` — so a host-level `ufw`/`iptables` rule
-does not block a published port. On a machine with a public IP that means four
-unauthenticated GPU endpoints reachable from the internet.
+`app/api.py` documented `--host 0.0.0.0` and `deploy/docker-compose.yml`
+published `8000:8000` through `8003:8000`, which Docker publishes on every
+interface. Docker's port publishing writes its rules into the `DOCKER` iptables
+chain, which is traversed **before** `INPUT` — so a host-level `ufw`/`iptables`
+rule does not block a published port, and on a machine with a public IP that
+meant four unauthenticated GPU endpoints reachable from the internet.
 
-What an unauthenticated caller can do: hold all four cards indefinitely with
+What an unauthenticated caller could do: hold all four cards indefinitely with
 60-step jobs; write to the 300 GB cap and force eviction of everybody else's
 forecasts; download any finished forecast; and pin runs so eviction cannot
 reclaim them (`POST /forecast/{id}/pin`), which turns the disk cap into a
 permanent loss of capacity.
 
-Fix, in order of preference:
+Fixed by publishing to loopback only — `ports: ["127.0.0.1:8000:8000"]` — and by
+documenting `--host 127.0.0.1` for a direct uvicorn run. Reach it with `ssh -L
+8000:localhost:8000`. The `--host 0.0.0.0` inside `deploy/Dockerfile` stays and
+is correct: a published port forwards to the container's own address, so a
+server on the container's loopback would be unreachable even from the host. The
+restriction has to be on the publishing side, which is where it now is.
 
-- Bind to loopback: `ports: ["127.0.0.1:8000:8000"]` in the compose file, and
-  `--host 127.0.0.1` when running uvicorn directly. Reach it over an SSH
-  tunnel.
-- Or front it with a reverse proxy that authenticates, and keep the containers
-  on loopback behind it.
+Still true, and the reason authentication is the real fix: anything that can
+reach the port has full use of the GPUs. A reverse proxy that authenticates,
+with the containers on loopback behind it, is the next step if this is ever
+exposed deliberately.
 
-Not a fix: a host firewall rule, for the reason above.
+Not a fix, and worth stating because it is the obvious thing to reach for: a
+host firewall rule, for the DOCKER-chain reason above.
 
 ### Medium — Python tracebacks are returned to the caller
 
@@ -132,19 +137,31 @@ Worth writing down, because these are the things a reader will assume are wrong:
 - **The archive is mounted `:ro`** and nothing on the serving path writes to it.
 - **No other tenants' usernames** appear anywhere in the history.
 
-## One thing this repository does disclose
+## The one disclosure, and why the history was rewritten
 
-`AURORA_HOST` — a username and a live SSH host — is in **34 of the 42
-commits**, at `scripts/ssh_probe.py:36` (as the default when
-`AURORA_SSH_HOST` is unset), `deploy/ssh_config.example:4-5`, and
-`bench/results/ssh.json:81,90`. `/home/kostya` also appears in several
-`bench/results/*.json` paths.
+The audit's only real finding outside the serving path: the development box's
+address and login — a live SSH host with a valid username — were committed as a
+default value in `scripts/ssh_probe.py`, in `deploy/ssh_config.example`, and in
+captured `stderr` inside `bench/results/ssh.json`. They were in 34 of the 42
+commits.
 
-The password is not there, but the pair (host, valid username) is what turns a
-scan into a targeted attempt, and the box is shared with other tenants who did
-not choose that exposure. Anyone forking or reading this should know it is
-deliberate history, not an accident — and anyone running the probe script should
-set `AURORA_SSH_HOST` rather than rely on that default.
+The password was never committed. But the pair (host, valid username) is what
+turns a port scan into a targeted attempt, and that box is shared with other
+tenants who did not choose the exposure. Publishing is not reversible — crawlers
+index within minutes — so the history was rewritten before the first push, and
+every occurrence across all branches now reads `AURORA_HOST`.
+
+Consequence for anyone who had a clone from before the push: every commit hash
+changed. There is no shared history to rebase onto; take a fresh clone.
+
+The scripts read the host from `$AURORA_SSH_HOST` and the password from
+`$AURORA_SSH_PASSWORD`, and now have no usable default for either — which is the
+point. Set both in the environment.
+
+`/home/kostya` still appears in captured paths inside `bench/results/*.json`. A
+username with no host attached is not the pair that matters, and those files are
+measurement records; scrubbing them would edit results to hide a home directory
+name.
 
 ## Reporting
 
