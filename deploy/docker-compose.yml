@@ -3,6 +3,19 @@
 # visible, which is that the containers are independent and share nothing but
 # a read-only archive.
 #
+# Every port is published on 127.0.0.1 and not on 0.0.0.0, which is the one
+# thing here that is a security decision rather than a deployment one. The API
+# has no authentication, so a published port is an open GPU: `POST /forecast`
+# holds a card for minutes and writes up to 11 GB, and it takes no credential
+# to call. A host firewall is not a substitute — Docker writes its publishing
+# rules into the DOCKER chain, which iptables traverses before INPUT, so a
+# `ufw deny 8000` on this box would not have covered it. Reach these over an
+# SSH tunnel:
+#
+#   ssh -L 8000:localhost:8000 <host>
+#
+# See SECURITY.md.
+#
 # This file is the deployment the README already prescribes ("one uvicorn
 # worker per GPU with AURORA_DEVICE=cuda:N"), written down. Containerising does
 # not change the process model — it packages it.
@@ -38,7 +51,7 @@ x-worker: &worker
 services:
   aurora-0:
     <<: *worker
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     environment: *env
     deploy:
       resources:
@@ -47,7 +60,7 @@ services:
 
   aurora-1:
     <<: *worker
-    ports: ["8001:8000"]
+    ports: ["127.0.0.1:8001:8000"]
     environment: *env
     deploy:
       resources:
@@ -56,7 +69,7 @@ services:
 
   aurora-2:
     <<: *worker
-    ports: ["8002:8000"]
+    ports: ["127.0.0.1:8002:8000"]
     environment: *env
     deploy:
       resources:
@@ -65,7 +78,7 @@ services:
 
   aurora-3:
     <<: *worker
-    ports: ["8003:8000"]
+    ports: ["127.0.0.1:8003:8000"]
     environment: *env
     deploy:
       resources:

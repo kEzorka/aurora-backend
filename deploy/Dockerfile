@@ -58,5 +58,13 @@ EXPOSE 8000
 # worker in the same container would load a second copy of the checkpoint onto
 # the same card. Parallelism is one container per GPU, not one container with
 # more workers.
+#
+# 0.0.0.0 here and 127.0.0.1 when running uvicorn on the host directly, which
+# reads like a contradiction and is not. A published port forwards to the
+# container's own address, so a server bound to the container's loopback is
+# unreachable even from the host. The restriction belongs on the publishing
+# side: compose publishes to 127.0.0.1, so this listener is only reachable
+# through that. Do not publish these ports on 0.0.0.0 — nothing here
+# authenticates. See SECURITY.md.
 CMD ["python3", "-m", "uvicorn", "app.api:app", \
      "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

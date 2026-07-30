@@ -1,6 +1,11 @@
 """HTTP surface.
 
-    uvicorn app.api:app --host 0.0.0.0 --port 8000
+    uvicorn app.api:app --host 127.0.0.1 --port 8000
+
+Loopback, not 0.0.0.0. None of these endpoints authenticate, and `POST
+/forecast` occupies a GPU for minutes and writes up to 11 GB, so a reachable
+port is an open GPU. Reach it from elsewhere with `ssh -L 8000:localhost:8000`,
+or put something in front that authenticates. See SECURITY.md.
 """
 
 from __future__ import annotations
