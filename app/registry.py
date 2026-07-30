@@ -66,8 +66,10 @@ class Job:
     init_time: dt.datetime
     steps: int
     # Part of what identifies a forecast, not a note about how it was made: an
-    # fp16 store is not the answer to a request made in fp32. Defaulted from the
-    # process setting because that is what a forecast started now would use.
+    # fp16 store is not the answer to a request made in fp32. The default is read
+    # once, when this class is defined — it is not live, so a test that reassigns
+    # `config.AUTOCAST` at runtime will not see it here. Callers that care pass
+    # the value; `jobs.submit` does.
     precision: str = config.AUTOCAST
     status: Status = "queued"
     progress: int = 0
@@ -242,9 +244,7 @@ class Registry:
             rows = self._db.execute("SELECT * FROM jobs ORDER BY created DESC").fetchall()
         return [_row_to_job(r) for r in rows]
 
-    def find_ready(
-        self, init_time: dt.datetime, steps: int, precision: str | None = None
-    ) -> Job | None:
+    def find_ready(self, init_time: dt.datetime, steps: int, precision: str) -> Job | None:
         """A finished job for exactly this request, if its output still exists.
 
         Precision is part of "exactly this request". `AURORA_AUTOCAST` is
@@ -256,8 +256,12 @@ class Registry:
         The disk check is not paranoia: eviction deletes stores, and a row that
         outlived its directory would hand the caller a 404 dressed as a 200.
         Such a row is corrected on the spot rather than left to lie again.
+
+        No default for `precision` on purpose. A default would be
+        `config.AUTOCAST`, and a caller that forgot the argument would silently
+        get the process-global precision substituted — which is the exact defect
+        this parameter exists to remove.
         """
-        precision = config.AUTOCAST if precision is None else precision
         with self._lock:
             rows = self._db.execute(
                 "SELECT * FROM jobs WHERE init_time = ? AND steps = ? AND precision = ?"

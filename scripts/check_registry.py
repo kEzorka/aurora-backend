@@ -36,13 +36,15 @@ def main() -> None:
 
         # --- a finished job is found by what it contains, not by its id
         path = fake_forecast(root, "f_24h", 40)
-        job = reg.add(Job(id=uuid.uuid4().hex[:12], init_time=init, steps=4))
+        job = reg.add(Job(id=uuid.uuid4().hex[:12], init_time=init, steps=4, precision="fp16"))
         reg.update(job.id, status="done", output=str(path), size_bytes=store_size(path))
 
-        found = reg.find_ready(init, 4)
+        # Precision is spelled out at every call: `find_ready` takes no default,
+        # so nothing here can accidentally test the process-global value instead.
+        found = reg.find_ready(init, 4, "fp16")
         assert found is not None and found.id == job.id, "identical request not matched"
-        assert reg.find_ready(init, 8) is None, "different lead must not match"
-        assert reg.find_ready(init + dt.timedelta(hours=6), 4) is None, "different init"
+        assert reg.find_ready(init, 8, "fp16") is None, "different lead must not match"
+        assert reg.find_ready(init + dt.timedelta(hours=6), 4, "fp16") is None, "different init"
         print(f"dedup: {found.id} matched, {found.size_bytes / 1024**2:.0f} MB accounted")
 
         # --- the total survives a reopen, which is the whole point of a file
@@ -54,7 +56,7 @@ def main() -> None:
 
         # --- eviction takes the least recently read, not the oldest
         old_hot = reg.add(Job(id="hot", init_time=init, steps=40))
-        cold = reg.add(Job(id="cold", init_time=init, steps=20))
+        cold = reg.add(Job(id="cold", init_time=init, steps=20, precision="fp16"))
         hot_path = fake_forecast(root, "f_hot", 40)
         cold_path = fake_forecast(root, "f_cold", 40)
         reg.update(old_hot.id, status="done", output=str(hot_path),
@@ -76,7 +78,7 @@ def main() -> None:
               f"(low mark {low / 1024**2:.0f} MB)")
 
         # --- a row whose store was deleted must not be handed out as ready
-        assert reg.find_ready(init, 20) is None, "evicted forecast still advertised"
+        assert reg.find_ready(init, 20, "fp16") is None, "evicted forecast still advertised"
         # And it says so: a reclaimed forecast is not a failed one. Without a
         # state of its own the table cannot say how many forecasts the box has
         # produced, because every deletion looked like a crash.
