@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from . import config
 from .jobs import ForecastService
-from .registry import Job
+from .registry import TERMINAL, Job
 
 service: ForecastService | None = None
 
@@ -64,6 +64,7 @@ def health() -> dict:
         "model_loaded": s.engine is not None,
         "archive": str(config.DATA_ROOT),
         "output_format": config.OUTPUT_FORMAT,
+        "precision": config.AUTOCAST,
         "archive_from": stamps[0].isoformat(),
         "archive_to": stamps[-1].isoformat(),
         "archive_steps": len(stamps),
@@ -79,6 +80,9 @@ def _job_json(job: Job) -> dict:
         "status": job.status,
         "init_time": job.init_time.isoformat(),
         "steps": job.steps,
+        # Reported because a client comparing two runs has to know which is
+        # which, and precision is a property of the process, not of the request.
+        "precision": job.precision,
         "lead_hours": job.lead_hours,
         "progress": job.progress,
         "output": job.output,
@@ -102,7 +106,7 @@ def create(req: ForecastRequest) -> dict:
         raise HTTPException(400, str(e)) from None
 
     deadline = time.monotonic() + config.INLINE_WAIT_S
-    while job.status not in ("done", "failed") and time.monotonic() < deadline:
+    while job.status not in TERMINAL and time.monotonic() < deadline:
         time.sleep(0.25)
         job = _svc().get(job.id) or job
 
@@ -177,7 +181,12 @@ async def events(job_id: str, request: Request) -> StreamingResponse:
             if job.status == "done":
                 yield _sse("done", {**_job_json(job), "data": f"/forecast/{job.id}/download"})
                 return
-            if job.status == "failed":
+            # Every other terminal state ends the stream as `failed`, including
+            # `evicted`. The distinction matters to the table, not to a client
+            # waiting for this job: either way no output is coming, and a client
+            # that only knows `done` and `failed` must not be left holding an
+            # open stream. `status` in the last progress event says which it was.
+            if job.status in TERMINAL:
                 yield _sse("failed", {"job_id": job.id, "error": job.error})
                 return
 

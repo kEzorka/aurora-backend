@@ -101,6 +101,44 @@ def check_stream() -> None:
           f"connection closed by the server")
 
 
+def check_evicted_stream() -> None:
+    """A job whose store was reclaimed ends the stream instead of hanging.
+
+    `evicted` is a terminal state the client has never heard of. If the stream
+    only closed on `done` and `failed`, this connection would sit there sending
+    keepalives until the client gave up.
+    """
+    api.service = StubService(steps=6, step_s=0.2)
+    api.service.job.status = "evicted"
+    api.service.job.error = "output evicted"
+    client = TestClient(api.app)
+    seen: list[str] = []
+    with client.stream("GET", "/forecast/stub01/events") as r:
+        for line in r.iter_lines():
+            if line.startswith("event:"):
+                seen.append(line.split(": ", 1)[1])
+    assert seen[-1] == "failed", f"evicted job did not end the stream: {seen}"
+    print(f"stream: evicted job closes as {seen[-1]}, not left open")
+
+
+def check_precision_paths() -> None:
+    """An fp32 reference and its fp16 counterpart do not share a store.
+
+    Same init, same lead, different precision: before the precision went into
+    the name these were one path, and `ForecastWriter` deletes what is there
+    before writing — so computing the reference destroyed the run it was meant
+    to score. Checked here rather than in check_registry because `postprocess`
+    pulls in aurora and torch.
+    """
+    from app.postprocess import output_path
+
+    init = dt.datetime(2026, 5, 1)
+    p16 = output_path(init, 7, config.OUTPUT_DIR, "fp16")
+    p32 = output_path(init, 7, config.OUTPUT_DIR, "off")
+    assert p16 != p32, f"fp16 and fp32 would write to one path: {p16}"
+    print(f"paths: {p16.name} vs {p32.name}")
+
+
 def check_404() -> None:
     api.service = StubService(steps=1, step_s=0.1)
     client = TestClient(api.app)
@@ -112,5 +150,7 @@ if __name__ == "__main__":
     check_inline_hit()
     check_inline_miss()
     check_stream()
+    check_evicted_stream()
+    check_precision_paths()
     check_404()
     print("ok")

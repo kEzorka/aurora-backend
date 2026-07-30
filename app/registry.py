@@ -29,13 +29,21 @@ from typing import Literal
 
 from . import config
 
-Status = Literal["queued", "running", "done", "failed"]
+# `evicted` is not a kind of failure and is kept apart from one. A forecast that
+# rolled out correctly and whose store was later reclaimed for disk has nothing
+# wrong with it; calling that `failed` loses the only record that the box ever
+# produced it, and makes "how many forecasts has this run?" unanswerable.
+Status = Literal["queued", "running", "done", "failed", "evicted"]
+
+# Nothing more happens to a job in these states, so a caller may stop waiting.
+TERMINAL: tuple[Status, ...] = ("done", "failed", "evicted")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
     id          TEXT PRIMARY KEY,
     init_time   TEXT NOT NULL,
     steps       INTEGER NOT NULL,
+    precision   TEXT NOT NULL DEFAULT 'fp16',
     status      TEXT NOT NULL,
     progress    INTEGER NOT NULL DEFAULT 0,
     output      TEXT,
@@ -47,7 +55,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 -- The dedup lookup and the eviction scan are the only two queries that run
 -- often enough to care about.
-CREATE INDEX IF NOT EXISTS jobs_content ON jobs (init_time, steps, status);
+CREATE INDEX IF NOT EXISTS jobs_content ON jobs (init_time, steps, precision, status);
 CREATE INDEX IF NOT EXISTS jobs_access  ON jobs (status, last_access);
 """
 
@@ -57,6 +65,10 @@ class Job:
     id: str
     init_time: dt.datetime
     steps: int
+    # Part of what identifies a forecast, not a note about how it was made: an
+    # fp16 store is not the answer to a request made in fp32. Defaulted from the
+    # process setting because that is what a forecast started now would use.
+    precision: str = config.AUTOCAST
     status: Status = "queued"
     progress: int = 0
     output: str | None = None
@@ -89,6 +101,7 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         id=row["id"],
         init_time=dt.datetime.fromisoformat(row["init_time"]),
         steps=row["steps"],
+        precision=row["precision"],
         status=row["status"],
         progress=row["progress"],
         output=row["output"],
@@ -134,8 +147,34 @@ class Registry:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
         self._db.executescript(SCHEMA)
+        self._migrate()
         self._db.commit()
         self._lock = threading.Lock()
+
+    def _migrate(self) -> None:
+        """Bring an older registry.db up to the current schema.
+
+        `CREATE TABLE IF NOT EXISTS` does nothing to a table that already
+        exists, so a column added above would be missing from every file written
+        before it — and the first `SELECT precision` would raise. Runs before the
+        lock exists because `__init__` is the only caller.
+
+        Existing rows keep the column default, `fp16`: it is the default the
+        service runs in, so it is the precision an undated row was almost
+        certainly computed at. Rows that predate the column and were in fact
+        fp32 will be re-rolled rather than matched — a wasted rollout, which is
+        the safe direction to be wrong in.
+        """
+        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(jobs)")}
+        if "precision" in cols:
+            return
+        self._db.execute("ALTER TABLE jobs ADD COLUMN precision TEXT NOT NULL DEFAULT 'fp16'")
+        # The index was created over the old column list under this same name,
+        # so `CREATE INDEX IF NOT EXISTS` above left it alone. Replace it.
+        self._db.execute("DROP INDEX IF EXISTS jobs_content")
+        self._db.execute(
+            "CREATE INDEX jobs_content ON jobs (init_time, steps, precision, status)"
+        )
 
     # ------------------------------------------------------------------ write
 
@@ -145,9 +184,17 @@ class Registry:
         job.last_access = job.created
         with self._lock:
             self._db.execute(
-                "INSERT INTO jobs (id, init_time, steps, status, progress, created,"
-                " last_access) VALUES (?, ?, ?, ?, 0, ?, ?)",
-                (job.id, job.init_time.isoformat(), job.steps, job.status, now, now),
+                "INSERT INTO jobs (id, init_time, steps, precision, status, progress,"
+                " created, last_access) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+                (
+                    job.id,
+                    job.init_time.isoformat(),
+                    job.steps,
+                    job.precision,
+                    job.status,
+                    now,
+                    now,
+                ),
             )
             self._db.commit()
         return job
@@ -195,24 +242,33 @@ class Registry:
             rows = self._db.execute("SELECT * FROM jobs ORDER BY created DESC").fetchall()
         return [_row_to_job(r) for r in rows]
 
-    def find_ready(self, init_time: dt.datetime, steps: int) -> Job | None:
+    def find_ready(
+        self, init_time: dt.datetime, steps: int, precision: str | None = None
+    ) -> Job | None:
         """A finished job for exactly this request, if its output still exists.
+
+        Precision is part of "exactly this request". `AURORA_AUTOCAST` is
+        process-level, so a service restarted in fp32 over the same registry.db
+        used to be handed back the fp16 store from before the restart — the one
+        case fp32 exists to serve. `bench/testset.py` restarts precisely that
+        way, which made the defect a routine event rather than a corner case.
 
         The disk check is not paranoia: eviction deletes stores, and a row that
         outlived its directory would hand the caller a 404 dressed as a 200.
         Such a row is corrected on the spot rather than left to lie again.
         """
+        precision = config.AUTOCAST if precision is None else precision
         with self._lock:
             rows = self._db.execute(
-                "SELECT * FROM jobs WHERE init_time = ? AND steps = ? AND status = 'done'"
-                " ORDER BY last_access DESC",
-                (init_time.isoformat(), steps),
+                "SELECT * FROM jobs WHERE init_time = ? AND steps = ? AND precision = ?"
+                " AND status = 'done' ORDER BY last_access DESC",
+                (init_time.isoformat(), steps, precision),
             ).fetchall()
         for row in rows:
             job = _row_to_job(row)
             if job.output and Path(job.output).exists():
                 return job
-            self.update(job.id, status="failed", error="output evicted", size_bytes=0)
+            self.update(job.id, status="evicted", error="output evicted", size_bytes=0)
         return None
 
     def total_bytes(self) -> int:
@@ -265,7 +321,8 @@ class Registry:
                 elif path.exists():
                     path.unlink(missing_ok=True)
             total -= job.size_bytes
-            self.update(job.id, status="failed", error="evicted", output=None, size_bytes=0)
+            # `evicted`, not `failed`: the rollout was fine, the disk was not.
+            self.update(job.id, status="evicted", error="evicted", output=None, size_bytes=0)
             removed.append(job.id)
         return removed
 

@@ -94,19 +94,28 @@ def _zarr_encoding(ds: xr.Dataset) -> dict:
     }
 
 
-def output_path(init_time: dt.datetime, steps: int, out_dir: Path | None = None) -> Path:
+def output_path(
+    init_time: dt.datetime,
+    steps: int,
+    out_dir: Path | None = None,
+    precision: str | None = None,
+) -> Path:
     """Where a forecast lands.
 
-    The lead has to be in the name, not just the init time. Two jobs with the
-    same init and different step counts would otherwise write to one path, and
-    the shorter one silently truncates a finished forecast another job is still
-    holding a download URL for. With the lead in the name, a collision means
-    the contents match.
+    Everything that changes the contents has to be in the name. The lead does
+    for the obvious reason — two jobs with the same init and different step
+    counts would write to one path, and the shorter one silently truncates a
+    finished forecast another job still holds a download URL for. The precision
+    does for the same reason and it is easier to miss: an fp32 reference run and
+    the fp16 exploration it is meant to be compared against share both the init
+    and the lead, so without it the reference overwrites the thing it scores.
+    With both in the name, a collision means the contents match.
     """
     out_dir = Path(out_dir or config.OUTPUT_DIR)
     lead = steps * config.STEP_HOURS
+    prec = precision or config.AUTOCAST
     suffix = "zarr" if config.OUTPUT_FORMAT == "zarr" else "nc"
-    return out_dir / f"forecast_{init_time:%Y%m%dT%H%M}_{lead:03d}h.{suffix}"
+    return out_dir / f"forecast_{init_time:%Y%m%dT%H%M}_{lead:03d}h_{prec}.{suffix}"
 
 
 class ForecastWriter:
@@ -116,9 +125,15 @@ class ForecastWriter:
     partial store behind for inspection rather than tidy the evidence away.
     """
 
-    def __init__(self, init_time: dt.datetime, steps: int, out_dir: Path | None = None):
+    def __init__(
+        self,
+        init_time: dt.datetime,
+        steps: int,
+        out_dir: Path | None = None,
+        precision: str | None = None,
+    ):
         self.init_time = init_time
-        self.path = output_path(init_time, steps, out_dir)
+        self.path = output_path(init_time, steps, out_dir, precision)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.format = config.OUTPUT_FORMAT
         self._written = 0

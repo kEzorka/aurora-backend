@@ -31,6 +31,17 @@ MODEL_NAME = os.environ.get("AURORA_MODEL", "AuroraPretrained")
 # AURORA_AUTOCAST=fp16 instead.
 ACTIVATION_CHECKPOINTING = os.environ.get("AURORA_ACT_CKPT", "0") == "1"
 
+# V100 is compute capability 7.0: fp16 tensor cores yes, bf16 no. fp16 is the
+# default because this backend exists to look at Aurora quickly, not to compare
+# precisions — it is the faster path on this hardware and the one every analysis
+# run wants. Set AURORA_AUTOCAST=off for an fp32 reference when a result is being
+# checked against physics rather than explored.
+#
+# It lives here rather than in `inference` because the registry needs it too: it
+# is part of what identifies a forecast, and a lookup must not hand an fp16 store
+# to a process that asked for fp32.
+AUTOCAST = os.environ.get("AURORA_AUTOCAST", "fp16")
+
 # Aurora steps 6 h at a time.
 STEP_HOURS = 6
 

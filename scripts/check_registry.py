@@ -77,7 +77,37 @@ def main() -> None:
 
         # --- a row whose store was deleted must not be handed out as ready
         assert reg.find_ready(init, 20) is None, "evicted forecast still advertised"
-        print("evicted rows no longer answer lookups")
+        # And it says so: a reclaimed forecast is not a failed one. Without a
+        # state of its own the table cannot say how many forecasts the box has
+        # produced, because every deletion looked like a crash.
+        gone = reg.get("cold")
+        assert gone is not None and gone.status == "evicted", f"state was {gone and gone.status}"
+        assert reg.total_bytes() == store_size(hot_path), "evicted bytes still counted"
+        print(f"evicted rows no longer answer lookups, and read {gone.status}, not failed")
+
+        # --- precision is part of the identity, not a note about the run
+        fp32 = reg.add(Job(id="fp32job", init_time=init, steps=6, precision="off"))
+        fp32_path = fake_forecast(root, "f_fp32", 40)
+        reg.update(fp32.id, status="done", output=str(fp32_path),
+                   size_bytes=store_size(fp32_path))
+        assert reg.find_ready(init, 6, "off") is not None, "fp32 run not matched by fp32 request"
+        assert reg.find_ready(init, 6, "fp16") is None, "fp16 request handed the fp32 store"
+        # The direction that used to be wrong in production: the service is
+        # restarted in fp32 over a db full of fp16 stores, as bench/testset.py
+        # does, and must roll out again instead of being handed the fp16 one.
+        fp16 = reg.add(Job(id="fp16job", init_time=init, steps=7, precision="fp16"))
+        fp16_path = fake_forecast(root, "f_fp16", 40)
+        reg.update(fp16.id, status="done", output=str(fp16_path),
+                   size_bytes=store_size(fp16_path))
+        assert reg.find_ready(init, 7, "off") is None, "fp32 request handed the fp16 store"
+        assert reg.find_ready(init, 7, "fp16").id == "fp16job", "fp16 lookup broken"
+        # A miss must stay a miss: the row it did not match is still usable.
+        assert reg.get("fp16job").status == "done", "a precision miss corrupted the row"
+        print("precision: fp16 and fp32 runs of the same init+lead stay separate")
+
+        # The matching check that the two also write to different paths is in
+        # check_sse, not here: `postprocess` imports aurora and torch, and this
+        # script is the one that runs on a laptop.
 
         # --- a pinned reference survives even when nobody has read it
         ref = reg.add(Job(id="fp32ref", init_time=init, steps=8))

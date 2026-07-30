@@ -40,13 +40,14 @@ class ForecastService:
     def submit(self, init_time: dt.datetime, steps: int) -> tuple[Job, bool]:
         """Return the job for this request and whether it was already there.
 
-        A forecast is identified by what it contains — the init time and the
-        lead — so an identical request is answered with the existing job. That
-        matters more than it sounds: `ForecastWriter` deletes the store at the
-        output path before writing, so recomputing a duplicate used to destroy
-        the finished copy another caller still held a download link for.
+        A forecast is identified by what it contains — the init time, the lead
+        and the precision it was computed in — so an identical request is
+        answered with the existing job. That matters more than it sounds:
+        `ForecastWriter` deletes the store at the output path before writing, so
+        recomputing a duplicate used to destroy the finished copy another caller
+        still held a download link for.
         """
-        ready = self.registry.find_ready(init_time, steps)
+        ready = self.registry.find_ready(init_time, steps, config.AUTOCAST)
         if ready is not None:
             self.registry.touch(ready.id)
             return ready, True
@@ -59,6 +60,7 @@ class ForecastService:
                 job.status in ("queued", "running")
                 and job.init_time == init_time
                 and job.steps == steps
+                and job.precision == config.AUTOCAST
             ):
                 return job, True
 
@@ -68,7 +70,12 @@ class ForecastService:
                 self.store._require(t)
 
         job = self.registry.add(
-            Job(id=uuid.uuid4().hex[:12], init_time=init_time, steps=steps)
+            Job(
+                id=uuid.uuid4().hex[:12],
+                init_time=init_time,
+                steps=steps,
+                precision=config.AUTOCAST,
+            )
         )
         self._queue.put(job.id)
         return job, False
@@ -99,7 +106,9 @@ class ForecastService:
 
                 # Each step is written and released before the next one is
                 # computed, so a 40-step job costs one step of host memory.
-                writer = postprocess.ForecastWriter(job.init_time, job.steps)
+                writer = postprocess.ForecastWriter(
+                    job.init_time, job.steps, precision=job.precision
+                )
                 done = 0
                 for pred in self.engine.rollout(batch, job.steps):
                     writer.add(pred)
