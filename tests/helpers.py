@@ -83,6 +83,7 @@ def canonical_dataset(
     init_time: str = "2026-08-01T00:00:00",
     surface_vars: Iterable[str] | None = None,
     atmos_vars: Iterable[str] | None = None,
+    step_hours: int = canon.STEP_HOURS,
 ) -> xr.Dataset:
     """Dataset в канонической форме: оси, уровни, единицы, атрибуты провенанса.
 
@@ -93,10 +94,7 @@ def canonical_dataset(
     atmos = tuple(atmos_vars) if atmos_vars is not None else canon.ATMOS_VARS
 
     time = np.array(
-        [
-            np.datetime64(init_time) + np.timedelta64(canon.STEP_HOURS * i, "h")
-            for i in range(times)
-        ],
+        [np.datetime64(init_time) + np.timedelta64(step_hours * i, "h") for i in range(times)],
         dtype="datetime64[ns]",
     )
     ny, nx = canon.GRID_SHAPE
@@ -136,6 +134,16 @@ def canonical_dataset(
         variable.attrs["units"] = canon.UNITS[str(key)]
         variable.attrs["_FillValue"] = np.float32(np.nan)
     return ds
+
+
+def layer_dataset(layer: canon.Layer, times: int = 2) -> xr.Dataset:
+    """Dataset ровно по слою хранилища: его набор полей и его шаг по времени."""
+    return canonical_dataset(
+        times=times,
+        surface_vars=layer.surface_vars,
+        atmos_vars=layer.atmos_vars,
+        step_hours=layer.step_hours,
+    )
 
 
 def plausible_dataset(times: int = 1, base_2t: float = 288.0) -> xr.Dataset:

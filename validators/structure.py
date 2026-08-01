@@ -21,28 +21,25 @@ def check_structure(
     ds: xr.Dataset,
     *,
     expect_static: bool = False,
-    surface_vars: tuple[str, ...] | None = None,
-    step_hours: int | None = None,
+    layer: canon.Layer | None = None,
 ) -> list[Check]:
     """Все структурные проверки разом. Возвращает и пройденные, и упавшие.
 
-    `surface_vars` разделяет два набора, которых после Aurora 1.5 стало два:
-    вход анализа — 18 полей, выход прогноза — 25 (docs/DOMAIN.md §5).
-    По умолчанию проверяется выход: его записывают чаще и ошибаются в нём дороже.
-
-    `step_hours` — шаг, если вызывающий его знает. Слой прогноза знает всегда,
-    и тогда проверка строгая; без него сойдёт любой шаг из
-    `canon.STEP_HOURS_ALLOWED`, лишь бы один и тот же по всему набору.
+    `layer` — слой хранилища (`canon.LAYERS`): он задаёт и набор полей, и шаг.
+    Наборов после Aurora 1.5 стало три, и по умолчанию проверяется `coarse`:
+    его записывают чаще и ошибаются в нём дороже. Часовой слой без явного
+    `layer` был бы отвергнут как неполный — у него 8 полей вместо 90.
     """
+    checked = canon.LAYERS["coarse"] if layer is None else layer
     return [
         _grid_shape(ds),
         _lat_descending(ds),
         _lon_range(ds),
         _lon_ascending(ds),
         _levels_match(ds),
-        _fields_present(ds, expect_static=expect_static, surface_vars=surface_vars),
+        _fields_present(ds, expect_static=expect_static, layer=checked),
         _time_unique(ds),
-        _time_regular(ds, step_hours=step_hours),
+        _time_regular(ds, step_hours=checked.step_hours),
     ]
 
 
@@ -108,11 +105,8 @@ def _levels_match(ds: xr.Dataset) -> Check:
     return ok("levels_match", "structure")
 
 
-def _fields_present(
-    ds: xr.Dataset, *, expect_static: bool, surface_vars: tuple[str, ...] | None
-) -> Check:
-    surface = canon.SURFACE_STORED_VARS if surface_vars is None else surface_vars
-    required = set(surface) | set(canon.ATMOS_VARS)
+def _fields_present(ds: xr.Dataset, *, expect_static: bool, layer: canon.Layer) -> Check:
+    required = set(layer.surface_vars) | set(layer.atmos_vars)
     if expect_static:
         required |= set(canon.STATIC_VARS)
     got = {str(v) for v in ds.data_vars}
@@ -132,19 +126,21 @@ def _time_unique(ds: xr.Dataset) -> Check:
     return ok("time_unique", "structure", f"{time.size} steps")
 
 
-def _time_regular(ds: xr.Dataset, *, step_hours: int | None = None) -> Check:
+def _time_regular(ds: xr.Dataset, *, step_hours: int) -> Check:
     """Пропуск по времени — это молча укороченный прогноз, а не ошибка чтения.
 
     Шагов после Aurora 1.5 два (6 ч и 1 ч), но в одном наборе — ровно один:
     смесь шагов означает, что часовой слой и шестичасовой склеились при записи,
-    и любая сумма по времени после этого врёт.
+    и любая сумма по времени после этого врёт. Проверяется шаг того слоя, в
+    который пишут: набор с шагом 1 ч, объявленный шестичасовым, — это не
+    «другой слой», а перепутанные сроки.
     """
     if "time" not in ds.coords:
         return fail("time_regular", "structure", "time", "missing", "coordinate present")
     time = np.asarray(ds["time"].values)
     if time.size < 2:
         return ok("time_regular", "structure", "single step")
-    allowed = (step_hours,) if step_hours is not None else canon.STEP_HOURS_ALLOWED
+    allowed = (step_hours,)
     # Сравнение точное, в наносекундах. astype("timedelta64[h]") округляет вниз,
     # и шаг 6 ч 1 мин читается как ровно 6: сдвиг времени — первая ловушка
     # docs/DOMAIN.md §6, ей нельзя давать пройти через округление.

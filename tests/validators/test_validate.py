@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 import xarray as xr
 
-from tests.helpers import canonical_dataset
+from contracts import canon
+from tests.helpers import canonical_dataset, layer_dataset
 from validators import RejectedError, raise_if_rejected, validate, write_report
 
 
@@ -42,6 +43,35 @@ def test_grib_level_without_a_file_is_refused() -> None:
     """Иначе отчёт выглядит полным, а самой ранней проверки в нём нет."""
     with pytest.raises(ValueError, match="grib_path"):
         validate(_plausible(), levels=["grib"])
+
+
+def test_hourly_layer_passes_only_when_it_names_itself() -> None:
+    """Часовой слой — 8 полей и шаг 1 ч. Без имени слоя он неотличим от
+    шестичасового прогноза, у которого потеряли 82 поля."""
+    ds = layer_dataset(canon.LAYERS["hourly"])
+    assert validate(ds, layer="hourly").ok
+    default = validate(ds)
+    assert default.ok is False
+    assert {c.name for c in default.failures()} == {"fields_present", "time_regular"}
+
+
+def test_six_hourly_data_written_as_the_hourly_layer_is_rejected() -> None:
+    """Слой объявлен часовым, а сроки идут через шесть часов — сроки перепутаны,
+    и любая сумма по времени после этого врёт (docs/DATA_CONTRACT.md §4)."""
+    six_hourly = canonical_dataset(
+        times=3,
+        surface_vars=canon.HOURLY_VARS,
+        atmos_vars=(),
+        step_hours=canon.STEP_HOURS,
+    )
+    report = validate(six_hourly, layer="hourly", levels=["structure"])
+    assert report.ok is False
+    assert [c.name for c in report.failures()] == ["time_regular"]
+
+
+def test_unknown_layer_is_refused() -> None:
+    with pytest.raises(ValueError, match="layer"):
+        validate(canonical_dataset(), layer="hourlyish")
 
 
 def test_report_is_written_next_to_the_artifact(tmp_path: Path) -> None:

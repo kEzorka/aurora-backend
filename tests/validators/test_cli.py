@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from validators.cli import main
+from validators.cli import layer_from_path, main
 
 
 def _tiny_broken_slice(path: Path) -> Path:
@@ -38,6 +38,20 @@ def test_report_destination_can_be_overridden(tmp_path: Path) -> None:
     out = tmp_path / "reports" / "validation.json"
     assert main([str(target), "--out", str(out)]) == 1
     assert out.exists()
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("artifacts/2026-08-01T00Z/forecast/current/hourly", "hourly"),
+        ("artifacts/2026-08-01T00Z/forecast/current/coarse", "coarse"),
+        ("artifacts/2026-08-01T00Z/analysis", "analysis"),
+        # Ничего не названо слоём — основной слой прогноза.
+        ("artifacts/2026-08-01T00Z/forecast.zarr", "coarse"),
+    ],
+)
+def test_layer_is_taken_from_the_path(path: str, expected: str) -> None:
+    assert layer_from_path(Path(path)) == expected
 
 
 def test_missing_artifacts_directory_exits_2(

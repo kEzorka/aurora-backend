@@ -10,7 +10,20 @@ from pathlib import Path
 
 import xarray as xr
 
+from contracts import canon
 from validators import validate, write_report
+
+
+def layer_from_path(path: Path) -> str:
+    """Слой по имени каталога: `.../forecast/current/hourly` — часовой.
+
+    Угадывать нечего: имена каталогов заданы docs/STORAGE.md §2. Всё, что не
+    названо слоем, считается `coarse` — основным слоем прогноза.
+    """
+    for part in reversed(path.parts):
+        if part in canon.LAYERS:
+            return part
+    return "coarse"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,6 +31,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("path", nargs="?", type=Path, help="путь к Zarr-срезу")
     parser.add_argument("--latest", action="store_true", help="взять последний срез из artifacts/")
     parser.add_argument("--out", type=Path, default=None, help="куда положить validation.json")
+    parser.add_argument(
+        "--layer",
+        choices=sorted(canon.LAYERS),
+        default=None,
+        help="слой хранилища; по умолчанию определяется по пути",
+    )
     args = parser.parse_args(argv)
 
     target: Path | None = args.path
@@ -32,7 +51,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # chunks={} — читать чанками с диска, как они записаны. Без этого редукции
     # валидатора грузят поле целиком: 2.2 ГБ одной температуры на 40 шагов.
-    report = validate(xr.open_zarr(target, chunks={}))
+    layer = args.layer or layer_from_path(Path(target))
+    report = validate(xr.open_zarr(target, chunks={}), layer=layer)
     destination = args.out or Path(target).parent / "validation.json"
     write_report(report, destination)
 

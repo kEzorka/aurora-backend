@@ -8,7 +8,9 @@
 Zarr, ни про HTTP — иначе им нельзя пользоваться отовсюду.
 """
 
-from typing import Final
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final, NamedTuple
 
 import numpy as np
 
@@ -234,6 +236,42 @@ STEP_HOURS_ALLOWED: Final = (FINE_STEP_HOURS, STEP_HOURS)
 # заморожен: добавить переменную позже — значит переписать раскладку Zarr,
 # потому что часовой слой лежит одним массивом по оси переменных.
 HOURLY_VARS: Final = ("2t", "10u", "10v", "msl", "tp_1h", "tcc", "2d", "i10fg")
+
+
+class Layer(NamedTuple):
+    """Слой хранилища: набор полей плюс шаг по времени.
+
+    Слоёв три, и различаются они не только шагом: у часового нет полей на
+    уровнях давления вовсе, а у анализа приземных полей 18, а не 25. Валидатор,
+    который знает только один набор, часовой слой отвергнет как неполный —
+    поэтому набор передаётся ему явно, а не берётся по умолчанию.
+    """
+
+    name: str
+    surface_vars: tuple[str, ...]
+    atmos_vars: tuple[str, ...]
+    step_hours: int
+    steps: int
+
+    @property
+    def fields_per_step(self) -> int:
+        return len(self.surface_vars) + len(self.atmos_vars) * len(PRESSURE_LEVELS)
+
+    @property
+    def fields(self) -> int:
+        return self.fields_per_step * self.steps
+
+
+LAYERS: Final[Mapping[str, Layer]] = MappingProxyType(
+    {
+        # 10 суток по 6 ч: основной слой, 90 полей на срок.
+        "coarse": Layer("coarse", SURFACE_STORED_VARS, ATMOS_VARS, STEP_HOURS, FORECAST_STEPS),
+        # Трое суток по часу: восемь приземных полей, уровней давления нет.
+        "hourly": Layer("hourly", HOURLY_VARS, (), FINE_STEP_HOURS, FINE_HORIZON_HOURS),
+        # Вход инференса: два шага анализа, 18 приземных полей (ADDENDUM-01 §1).
+        "analysis": Layer("analysis", SURFACE_INGESTED_VARS, ATMOS_VARS, STEP_HOURS, 2),
+    }
+)
 
 # Допустимые значения поля `source` в ответе API — docs/DATA_CONTRACT.md §3.
 SOURCES: Final = (

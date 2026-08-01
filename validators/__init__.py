@@ -11,6 +11,7 @@ from pathlib import Path
 
 import xarray as xr
 
+from contracts import canon
 from validators.messages import check_messages
 from validators.physics import check_physics, check_sanity
 from validators.result import Check, ValidationReport
@@ -32,9 +33,20 @@ __all__ = [
     "ValidationReport",
     "check_messages",
     "raise_if_rejected",
+    "resolve_layer",
     "validate",
     "write_report",
 ]
+
+
+def resolve_layer(layer: canon.Layer | str | None) -> canon.Layer | None:
+    """Имя слоя — в сам слой. Неизвестное имя отвергается сразу: опечатка в нём
+    иначе тихо превратилась бы в проверку по умолчанию, то есть по чужому набору."""
+    if layer is None or isinstance(layer, canon.Layer):
+        return layer
+    if layer not in canon.LAYERS:
+        raise ValueError(f"layer: got {layer!r}, expected one of {sorted(canon.LAYERS)}")
+    return canon.LAYERS[layer]
 
 
 class RejectedError(Exception):
@@ -51,10 +63,16 @@ def validate(
     levels: Sequence[str] | None = None,
     expect_static: bool = False,
     grib_path: Path | str | None = None,
+    layer: canon.Layer | str | None = None,
 ) -> ValidationReport:
     """Отчёт по набору. `grib_path` включает уровень «grib» — он нужен там,
     где Dataset только что получен из GRIB, и ещё можно сверить число полей
-    с числом сообщений в файле."""
+    с числом сообщений в файле.
+
+    `layer` — имя слоя из `canon.LAYERS` или сам слой. Без него проверяется
+    `coarse`: 90 полей и шаг 6 ч. Часовой слой обязан называть себя, иначе
+    будет отвергнут как неполный — и это правильнее, чем принять его молча.
+    """
     default = ALL_LEVELS if grib_path is not None else DATASET_LEVELS
     wanted = tuple(levels) if levels is not None else default
     unknown = set(wanted) - set(ALL_LEVELS)
@@ -69,7 +87,7 @@ def validate(
     if "grib" in wanted and grib_path is not None:
         checks.extend(check_messages(grib_path, ds))
     if "structure" in wanted:
-        checks.extend(check_structure(ds, expect_static=expect_static))
+        checks.extend(check_structure(ds, expect_static=expect_static, layer=resolve_layer(layer)))
     if "semantics" in wanted:
         checks.extend(check_semantics(ds))
     if "physics" in wanted:
