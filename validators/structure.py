@@ -121,8 +121,12 @@ def _time_regular(ds: xr.Dataset) -> Check:
     time = np.asarray(ds["time"].values)
     if time.size < 2:
         return ok("time_regular", "structure", "single step")
-    deltas = np.diff(time).astype("timedelta64[h]").astype(int)
-    got = tuple(int(v) for v in np.unique(deltas))
-    if got != (canon.STEP_HOURS,):
-        return fail("time_regular", "structure", "time step (h)", list(got), [canon.STEP_HOURS])
+    # Сравнение точное, в наносекундах. astype("timedelta64[h]") округляет вниз,
+    # и шаг 6 ч 1 мин читается как ровно 6: сдвиг времени — первая ловушка
+    # docs/DOMAIN.md §6, ей нельзя давать пройти через округление.
+    deltas = np.unique(np.diff(time).astype("timedelta64[ns]").astype("int64"))
+    expected = np.timedelta64(canon.STEP_HOURS, "h").astype("timedelta64[ns]").astype("int64")
+    if tuple(deltas) != (expected,):
+        got = [f"{int(d) / 3.6e12:g}h" for d in deltas]
+        return fail("time_regular", "structure", "time step", got, [f"{canon.STEP_HOURS}h"])
     return ok("time_regular", "structure", f"{canon.STEP_HOURS}h step")

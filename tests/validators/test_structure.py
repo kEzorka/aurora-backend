@@ -6,7 +6,8 @@
 
 import numpy as np
 
-from tests.helpers import canonical_dataset
+from contracts import canon
+from tests.helpers import canonical_dataset, latitude_profile
 from validators.result import Check
 from validators.structure import check_structure
 
@@ -76,8 +77,35 @@ def test_levels_out_of_order_are_rejected() -> None:
     assert check.details["expected"][0] == 50
 
 
+def test_uneven_step_is_rejected_without_rounding() -> None:
+    """Шаг 6 ч 1 мин — это сдвиг времени, а не шаг 6 ч, округлённый вниз."""
+    ds = canonical_dataset(times=2)
+    times = ds["time"].values.copy()
+    times[1] = times[0] + np.timedelta64(6 * 60 + 1, "m")
+    assert failure(check_structure(ds.assign_coords(time=times)), "time_regular")
+
+
 def test_static_fields_are_only_required_when_asked_for() -> None:
     ds = canonical_dataset()
     assert [c for c in check_structure(ds) if not c.passed] == []
     check = failure(check_structure(ds, expect_static=True), "fields_present")
     assert "lsm" in check.message
+
+
+def test_missing_orography_is_caught_although_pressure_z_is_present() -> None:
+    """`z` на уровнях давления и `z` статический — разные поля.
+
+    Если бы канон звал их одинаково, набор required схлопывал бы их в одно имя
+    и срез без орографии проходил бы проверку с expect_static=True.
+    """
+    ds = canonical_dataset()
+    ny, nx = canon.GRID_SHAPE
+    with_partial_static = ds.assign(
+        {
+            "lsm": (("lat", "lon"), latitude_profile(0.5, (ny, nx), ny)),
+            "slt": (("lat", "lon"), latitude_profile(3.0, (ny, nx), ny)),
+        }
+    )
+    assert "z" in with_partial_static.data_vars
+    check = failure(check_structure(with_partial_static, expect_static=True), "fields_present")
+    assert "z_surf" in check.message

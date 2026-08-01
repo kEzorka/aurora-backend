@@ -66,6 +66,23 @@ def test_every_canonical_variable_has_units() -> None:
         assert name in canon.UNITS, f"{name}: единицы не объявлены"
 
 
+def test_static_and_pressure_level_names_do_not_collide() -> None:
+    """Геопотенциал поверхности и геопотенциал на уровнях — два разных поля.
+
+    Общее имя `z` в одном Dataset означало бы, что одно из них молча затирает
+    другое, а проверка полноты набора полей схлопывает их в одно имя.
+    """
+    assert set(canon.STATIC_VARS) & set(canon.ATMOS_VARS) == set()
+    assert set(canon.STATIC_VARS) & set(canon.SURFACE_VARS) == set()
+    assert canon.AURORA_STATIC_NAMES["z_surf"] == "z"
+    assert set(canon.AURORA_STATIC_NAMES) == set(canon.STATIC_VARS)
+
+
+def test_pressure_geopotential_range_does_not_cover_orography() -> None:
+    """Иначе орография, записанная вместо уровня 50 гПа, пройдёт проверку."""
+    assert canon.PHYSICAL_RANGES["z"][1] > canon.PHYSICAL_RANGES["z_surf"][1] * 3
+
+
 def test_provenance_sources_are_the_ones_the_api_may_return() -> None:
     assert set(canon.SOURCES) == {
         "aurora-forecast",

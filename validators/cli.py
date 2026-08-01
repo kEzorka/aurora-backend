@@ -30,7 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     if target is None:
         parser.error("укажите путь или --latest")
 
-    report = validate(xr.open_zarr(target))
+    # chunks={} — читать чанками с диска, как они записаны. Без этого редукции
+    # валидатора грузят поле целиком: 2.2 ГБ одной температуры на 40 шагов.
+    report = validate(xr.open_zarr(target, chunks={}))
     destination = args.out or Path(target).parent / "validation.json"
     write_report(report, destination)
 
