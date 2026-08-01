@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 FORBIDDEN = {
     "api": {"adapters", "pipeline", "torch", "aurora", "cfgrib", "cdsapi"},
+    # Адаптер знает только про источник и канон. Куда положить прочитанное,
+    # решает pipeline; знай об этом адаптер — и правило приёма поехало бы
+    # вслед за форматом хранилища.
+    "adapters": {"api", "storage", "cache", "pipeline", "torch", "aurora"},
     "storage": {"api", "adapters", "torch", "aurora"},
     "cache": {"api", "pipeline", "torch", "aurora"},
     "contracts": {"api", "storage", "cache", "adapters", "pipeline", "xarray", "torch"},

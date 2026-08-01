@@ -18,7 +18,7 @@
 | `grib/ecmwf_t850_6h.grib2` | то же, уровень 850 гПа | поле на уровне давления рядом с приземным |
 | `grib/gfs_t2m.grib2` | NOMADS, GFS 0.25°, `f006` | **долгота 0..359.75** — ловушка 2 из `docs/DOMAIN.md` §6 |
 | `grib/ecmwf_tp_6h.grib2` | ECMWF, `tp`, `stepRange=0-6` | осадки, накопленные **от начала прогона** |
-| `grib/ecmwf_tp_12h.grib2` | ECMWF, `tp`, `stepRange=0-12` | пара к предыдущему: 12 ч ≥ 6 ч, шаг берётся разностью |
+| `grib/ecmwf_tp_12h.grib2` | ECMWF, `tp`, `stepRange=0-12` | пара к предыдущему: `0-12`, а не `6-12` — шаг берётся разностью |
 | `grib/gfs_apcp_f006.grib2` | GFS, `APCP`, `stepRange=0-6` | осадки в `kg m-2`, не в метрах — ловушка 3 |
 | `grib/gfs_apcp_f012.grib2` | GFS, `APCP`, `stepRange=6-12` | накопление **за интервал**, не от начала: разность здесь была бы ошибкой |
 
