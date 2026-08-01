@@ -38,6 +38,12 @@ def test_unknown_level_is_refused() -> None:
         validate(_plausible(), levels=["vibes"])
 
 
+def test_grib_level_without_a_file_is_refused() -> None:
+    """Иначе отчёт выглядит полным, а самой ранней проверки в нём нет."""
+    with pytest.raises(ValueError, match="grib_path"):
+        validate(_plausible(), levels=["grib"])
+
+
 def test_report_is_written_next_to_the_artifact(tmp_path: Path) -> None:
     report = validate(_plausible())
     path = write_report(report, tmp_path / "validation.json")

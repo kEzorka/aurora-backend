@@ -12,7 +12,9 @@ from typing import Any
 
 import numpy as np
 
-LEVELS = ("structure", "semantics", "physics", "sanity")
+# «grib» идёт первым, потому что работает раньше остальных: на файле, а не
+# на Dataset. Всё, что ниже, уже верит cfgrib на слово (ADDENDUM-01 §5).
+LEVELS = ("grib", "structure", "semantics", "physics", "sanity")
 
 
 @dataclass(frozen=True, slots=True)

@@ -11,18 +11,26 @@ from pathlib import Path
 
 import xarray as xr
 
+from validators.messages import check_messages
 from validators.physics import check_physics, check_sanity
 from validators.result import Check, ValidationReport
 from validators.semantics import check_semantics
 from validators.structure import check_structure
 
-ALL_LEVELS = ("structure", "semantics", "physics", "sanity")
+#: Уровни, которым хватает Dataset.
+DATASET_LEVELS = ("structure", "semantics", "physics", "sanity")
+
+#: «grib» первым: он единственный смотрит на файл, а не на разобранный
+#: Dataset, и потому единственный видит, что cfgrib потерял (ADDENDUM-01 §5).
+ALL_LEVELS = ("grib", *DATASET_LEVELS)
 
 __all__ = [
     "ALL_LEVELS",
+    "DATASET_LEVELS",
     "Check",
     "RejectedError",
     "ValidationReport",
+    "check_messages",
     "raise_if_rejected",
     "validate",
     "write_report",
@@ -42,13 +50,24 @@ def validate(
     *,
     levels: Sequence[str] | None = None,
     expect_static: bool = False,
+    grib_path: Path | str | None = None,
 ) -> ValidationReport:
-    wanted = tuple(levels) if levels is not None else ALL_LEVELS
+    """Отчёт по набору. `grib_path` включает уровень «grib» — он нужен там,
+    где Dataset только что получен из GRIB, и ещё можно сверить число полей
+    с числом сообщений в файле."""
+    default = ALL_LEVELS if grib_path is not None else DATASET_LEVELS
+    wanted = tuple(levels) if levels is not None else default
     unknown = set(wanted) - set(ALL_LEVELS)
     if unknown:
         raise ValueError(f"levels: got {sorted(unknown)}, expected a subset of {ALL_LEVELS}")
+    if "grib" in wanted and grib_path is None:
+        # Молча пропустить уровень нельзя: отчёт выглядел бы полным, а самая
+        # ранняя проверка в нём просто отсутствовала бы.
+        raise ValueError("levels: 'grib' requires grib_path")
 
     checks: list[Check] = []
+    if "grib" in wanted and grib_path is not None:
+        checks.extend(check_messages(grib_path, ds))
     if "structure" in wanted:
         checks.extend(check_structure(ds, expect_static=expect_static))
     if "semantics" in wanted:
