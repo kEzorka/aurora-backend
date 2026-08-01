@@ -1,6 +1,7 @@
 """Помощник обязан давать настоящую сетку и не отъедать под неё 286 МБ."""
 
 import numpy as np
+import xarray as xr
 
 from contracts import canon
 from tests.helpers import canonical_dataset, plausible_dataset, varying_field
@@ -17,6 +18,21 @@ def test_helper_does_not_allocate_the_grid() -> None:
     values = ds["t"].variable.data
     assert values.base is not None, "поле материализовано, а должно быть broadcast-видом"
     assert values.strides[-1] == 0
+
+
+def test_helper_fields_are_not_constant() -> None:
+    """not_constant — законная проверка; помощник обязан её проходить."""
+    ds = canonical_dataset()
+    for name in ("2t", "msl", "t", "q"):
+        values = ds[name].values
+        assert values.min() < values.max(), name
+
+
+def test_helper_2t_keeps_the_global_mean_at_288_kelvin() -> None:
+    ds = canonical_dataset()
+    weights = np.cos(np.deg2rad(ds["lat"].values))
+    mean = float(ds["2t"].weighted(xr.DataArray(weights, dims="lat")).mean().item())
+    assert 287.0 < mean < 289.0
 
 
 def test_helper_dataset_carries_all_69_fields_and_units() -> None:

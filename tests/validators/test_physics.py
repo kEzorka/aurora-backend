@@ -19,12 +19,7 @@ def _with_varying_2t(base: float = 288.0, times: int = 1) -> xr.Dataset:
 def test_plausible_fields_pass_physics_and_sanity() -> None:
     ds = _with_varying_2t()
     assert [c.name for c in check_physics(ds) if not c.passed] == []
-
-    failures = [c for c in check_sanity(ds) if not c.passed]
-    # Помощник ради памяти делает все поля кроме 2t константными broadcast-видами,
-    # поэтому not_constant по ним падает законно. Остальные проверки — нет.
-    assert {c.name for c in failures} == {"not_constant"}
-    assert "2t" not in {c.details["field"] for c in failures}
+    assert [c.message for c in check_sanity(ds) if not c.passed] == []
 
 
 def test_temperature_in_celsius_is_caught_by_the_range_check() -> None:
@@ -42,9 +37,13 @@ def test_global_mean_catches_celsius_even_within_the_wide_range() -> None:
 
 
 def test_constant_field_is_rejected() -> None:
-    ds = canonical_dataset()  # helper даёт константные поля
+    """Распаковка scale/offset мимо — и поле превращается в одно число."""
+    ds = canonical_dataset()
+    ny, nx = canon.GRID_SHAPE
+    flat = np.broadcast_to(np.float32(288.0), (1, ny, nx))
+    ds = ds.assign({"2t": (("time", "lat", "lon"), flat)})
     failure = next(c for c in check_sanity(ds) if c.name == "not_constant" and not c.passed)
-    assert failure.details["field"] in canon.SURFACE_VARS
+    assert failure.details["field"] == "2t"
 
 
 def test_step_to_step_jump_over_15_kelvin_is_rejected() -> None:

@@ -21,6 +21,22 @@ from contracts import canon
 SURFACE_DEFAULTS = {"2t": 288.0, "10u": 3.0, "10v": -2.0, "msl": 101_325.0}
 ATMOS_DEFAULTS = {"t": 250.0, "u": 10.0, "v": 5.0, "q": 0.004, "z": 50_000.0}
 
+#: Насколько поле «гуляет» по широте. Константное поле законно отвергается
+#: проверкой not_constant, поэтому канонический помощник обязан меняться —
+#: но профиль по широте стоит 721 число, а не 4 МБ на поле.
+LATITUDE_RELIEF = 0.01
+
+
+def latitude_profile(value: float, shape: tuple[int, ...], ny: int) -> np.ndarray:
+    """Поле, меняющееся по широте, но остающееся broadcast-видом.
+
+    Профиль симметричен относительно экватора, поэтому взвешенное по cos(lat)
+    среднее равно value: 2t остаётся 288 K, а не уезжает из диапазона.
+    """
+    relief = np.linspace(-1.0, 1.0, ny, dtype=np.float32).reshape(ny, 1)
+    profile = np.float32(value) * (1.0 + LATITUDE_RELIEF * relief)
+    return np.broadcast_to(profile.astype(np.float32), shape)
+
 
 def varying_field(shape: tuple[int, ...], scale: float = 1.0) -> np.ndarray:
     """Поле с градиентом: константное поле валится проверкой «здравый смысл»."""
@@ -51,14 +67,14 @@ def canonical_dataset(
 
     data: dict[str, xr.DataArray] = {}
     for name in surface:
-        value = np.float32(SURFACE_DEFAULTS.get(name, 1.0))
         data[name] = xr.DataArray(
-            np.broadcast_to(value, (times, ny, nx)), dims=("time", "lat", "lon")
+            latitude_profile(SURFACE_DEFAULTS.get(name, 1.0), (times, ny, nx), ny),
+            dims=("time", "lat", "lon"),
         )
     for name in atmos:
-        value = np.float32(ATMOS_DEFAULTS.get(name, 1.0))
         data[name] = xr.DataArray(
-            np.broadcast_to(value, (times, nl, ny, nx)), dims=("time", "level", "lat", "lon")
+            latitude_profile(ATMOS_DEFAULTS.get(name, 1.0), (times, nl, ny, nx), ny),
+            dims=("time", "level", "lat", "lon"),
         )
 
     ds = xr.Dataset(
