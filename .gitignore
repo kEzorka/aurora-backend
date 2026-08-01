@@ -17,3 +17,18 @@ bench/scratch/
 
 .DS_Store
 report/build/
+
+# Артефакты прогонов: forecast.zarr + manifest.json + validation.json.
+# Манифесты маленькие, но без своего Zarr бессмысленны, поэтому каталог целиком.
+artifacts/*
+!artifacts/.gitkeep
+
+# Ключи. Ни один не должен попасть ни в репозиторий, ни в manifest.json
+# (docs/SETUP.md §1).
+.env
+.cdsapirc
+
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

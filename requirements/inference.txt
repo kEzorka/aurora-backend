@@ -1,0 +1,11 @@
+# Окружение B — инференс, только GPU-узел (docs/SETUP.md §4).
+# Отдельный venv. Обмен с сервисом идёт через хранилище и очередь в SQLite,
+# не через импорт кода.
+#
+# torch ставится первым и отдельно, под драйвер конкретного узла:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+
+microsoft-aurora>=1.5
+xarray>=2025.1
+zarr>=3.0
+numpy>=1.26

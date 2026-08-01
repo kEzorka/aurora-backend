@@ -1,0 +1,44 @@
+[project]
+name = "aurora-backend"
+version = "0.1.0"
+description = "Weather backend: Aurora forecasts and ERA5 history over a JSON API"
+requires-python = ">=3.11,<3.13"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["contracts", "adapters", "pipeline", "validators", "storage", "cache", "api"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# docs/ — проектные документы и планы; примеры кода в них форматировать не надо,
+# bench/ — код предыдущего этапа, сохранённый ради воспроизводимости замеров.
+extend-exclude = ["docs", "bench", "report"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+# N815: имена переменных Aurora (2t, 10u, msl) — часть контракта, а не стиль.
+# RUF001-003: комментарии и docstring'и на русском, кириллические буквы
+#             в них — не «похожие на латиницу», а просто русский текст.
+ignore = ["N815", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+ignore_missing_imports = true
+exclude = ["^bench/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "gpu: requires a CUDA device",
+    "network: talks to the outside world, never part of `make test`",
+]
