@@ -103,7 +103,9 @@ AURORA_SURFACE_NAMES: Final[dict[str, str]] = {
 # файлом вместе с чекпоинтом
 # (huggingface.co/microsoft/aurora, `aurora-0.25-v1.5-static.pickle`).
 # Здесь перечислено то, что качаем сами — для масок суши в API и для
-# резервного чекпоинта `aurora-0.25-finetuned`.
+# резервного чекпоинта `aurora-0.25-finetuned`. Имена наши, не апстримовые:
+# у Aurora 1.5 те же величины зовутся `z`, `slt_0..slt_7` и приходят из
+# pickle. Скармливать эти три модели нельзя — она ждёт все 36.
 STATIC_VARS: Final = ("lsm", "z_surf", "slt")
 AURORA_STATIC_NAMES: Final[dict[str, str]] = {"lsm": "lsm", "z_surf": "z", "slt": "slt"}
 
@@ -225,9 +227,10 @@ FORECAST_HOURS: Final = STEP_HOURS * FORECAST_STEPS
 FINE_STEP_HOURS: Final = 1
 FINE_HORIZON_HOURS: Final = 72
 
-#: Шаг по времени больше не один на всё хранилище, но и не любой: набор
-#: закрытый, иначе проверка «нет пропусков по времени» перестаёт что-либо
-#: значить — под неё подойдёт любая дыра.
+#: Допустимые значения `step_hours` в запросе к API (docs/API_CONTRACT.md §2).
+#: Валидатор им не пользуется: он проверяет шаг того слоя, в который пишут,
+#: а не «один из разрешённых» — набор с шагом 1 ч, объявленный шестичасовым,
+#: обязан быть отвергнут.
 STEP_HOURS_ALLOWED: Final = (FINE_STEP_HOURS, STEP_HOURS)
 
 # Часовой слой хранит не все 90 полей, а восемь: 72 срока × 90 полей — это
