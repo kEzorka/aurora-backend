@@ -245,4 +245,4 @@ leaks back onto `cuda:0` through a plain `"cuda"` allocation.
 | `AURORA_DEVICE` | `cuda:0` | Which GPU |
 | `AURORA_MODEL` | `AuroraPretrained` | Checkpoint class |
 | `AURORA_ACT_CKPT` | `0` | Activation checkpointing — a no-op under `inference_mode`, kept for a future fine-tuning path |
-| `AURORA_AUTOCAST` | `fp16` | `off` for an fp32 reference run (V100 has no bf16). Recorded per job: an fp16 store is never handed back to a request made in fp32, and the two write to different paths |
+| `AURORA_AUTOCAST` | `off` | `fp16` to trade precision for speed (V100 has no bf16) |

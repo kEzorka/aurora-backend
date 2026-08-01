@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import config
+from . import config, read_api
 from .jobs import ForecastService
 from .registry import TERMINAL, Job
 
@@ -43,6 +43,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Aurora forecast backend", lifespan=lifespan)
+
+# The read-only surface. Mounted separately because it is the one callers are
+# meant to use: /v1 answers from what a producer already wrote, while everything
+# below occupies a GPU.
+app.include_router(read_api.router)
 
 
 class ForecastRequest(BaseModel):
