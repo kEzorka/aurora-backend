@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import Final, NamedTuple
 
 import xarray as xr
+from zarr.codecs import BloscCodec
 
 from contracts import canon
 
@@ -92,6 +93,50 @@ LAYOUT_B: Final = Chunking(
     chunk=(STEPS_PER_YEAR, 1, 4, 4),
     shard=(STEPS_PER_YEAR, 1, 64, 64),
 )
+
+
+#: Оси раскладки по именам канона. Порядок тот же, что в `Chunking.chunk`.
+_AXIS: Final[Mapping[str, int]] = MappingProxyType({"time": 0, "level": 1, "lat": 2, "lon": 3})
+
+
+def _codec() -> BloscCodec:
+    """`zstd` уровня 3 с shuffle (docs/STORAGE.md §4), а не дефолт библиотеки.
+
+    Shuffle переставляет байты одного разряда рядом: у соседних значений
+    метеополя старшие байты совпадают, и после перестановки они сжимаются
+    как повторы. На float32-полях это заметно больше, чем разница уровней.
+    """
+    return BloscCodec(cname="zstd", clevel=3, shuffle="shuffle")
+
+
+def encoding_for(ds: xr.Dataset, layout: Chunking) -> dict[str, dict[str, object]]:
+    """Кодировка для `to_zarr`: чанк, шард и кодек на каждое поле.
+
+    Чанк обрезается по массиву: чанк больше массива Zarr не примет, а слои
+    бывают меньше сетки (месячные средние, тесты). Шард после обрезки
+    пересчитывается через то же отношение «чанков в шарде», иначе он
+    перестаёт делиться на чанк нацело — и запись падает посреди прогона.
+    """
+    encoding: dict[str, dict[str, object]] = {}
+    for name, variable in ds.data_vars.items():
+        chunks: list[int] = []
+        shards: list[int] = []
+        for dim, size in zip(variable.dims, variable.shape, strict=True):
+            axis = _AXIS.get(str(dim))
+            if axis is None:
+                chunk, per_shard = size, 1
+            else:
+                chunk = min(layout.chunk[axis], size)
+                per_shard = layout.shard[axis] // layout.chunk[axis]
+            whole = -(-size // chunk) * chunk  # округление вверх до целых чанков
+            chunks.append(chunk)
+            shards.append(min(chunk * per_shard, whole))
+        encoding[str(name)] = {
+            "chunks": tuple(chunks),
+            "shards": tuple(shards),
+            "compressors": [_codec()],
+        }
+    return encoding
 
 
 def layer_path(root: str | Path, layer: str) -> Path:

@@ -41,4 +41,5 @@ addopts = "-q --strict-markers"
 markers = [
     "gpu: requires a CUDA device",
     "network: talks to the outside world, never part of `make test`",
+    "slow: writes or reads the real 721x1440 grid, seconds rather than milliseconds",
 ]
