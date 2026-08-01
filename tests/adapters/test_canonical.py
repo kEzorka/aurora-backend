@@ -84,9 +84,19 @@ def test_time_is_the_valid_time_of_the_message_not_the_start_of_the_run() -> Non
 
 
 def test_latitude_flipped_by_the_source_is_flipped_back() -> None:
+    """То же, что с долготой, и по той же причине: поле здесь — сама широта,
+    иначе переворот оси и переворот данных неотличимы. На нулях сходится любая
+    реализация, включая ту, что переписывает подписи и оставляет карту вверх
+    ногами."""
     ascending = canon.LAT[::-1].copy()
-    out = _canonical(_message(lon=canon.LON, lat=ascending))
+    marked = np.broadcast_to(
+        ascending.astype(np.float32).reshape(-1, 1), (ascending.size, canon.LON.size)
+    )
+    out = _canonical(_message(lon=canon.LON, lat=ascending, values=marked))
+
     assert np.array_equal(out["lat"].values, canon.LAT)
+    assert float(out["2t"].sel(lat=90.0).isel(time=0, lon=0)) == 90.0
+    assert float(out["2t"].sel(lat=-90.0).isel(time=0, lon=0)) == -90.0
 
 
 def test_dimension_order_matches_the_canon() -> None:
