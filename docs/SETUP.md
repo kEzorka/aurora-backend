@@ -45,7 +45,7 @@
 | Узел | Роль | Требования |
 |---|---|---|
 | Сервер проекта | приём, хранилище, кэш, API | диск **300 ГБ**, 16+ ГБ RAM, постоянный аптайм |
-| GPU-узел (только на время школы) | инференс Aurora | NVIDIA, **40 ГБ VRAM** для 0.25°, CUDA-драйвер, ~20 ГБ под чекпоинты |
+| GPU-узел (только на время школы) | инференс Aurora | NVIDIA, **32 ГБ VRAM** для 0.25° (`ADDENDUM-01` §3), CUDA-драйвер, ~20 ГБ под чекпоинты |
 | Ноутбуки разработчиков | разработка, тесты на фикстурах | Docker, ~50 ГБ свободно |
 
 **MacBook / Apple Silicon инференс Aurora не потянет** — нужен CUDA. Разработка конвейера
@@ -69,11 +69,14 @@ xarray, numpy, dask[distributed]
 zarr >= 3          ← формат v3, шардинг; проверить, что версия действительно 3.x
 cfgrib + eccodes   ← бинарная зависимость! ставить из conda-forge, pip-версии ломаются на ARM
 ecmwf-opendata     ← скачивание открытых данных ECMWF
+earthkit-data      ← слой доступа ECMWF 1.0 (P1, ADDENDUM-01 §6); заменяет ручной разбор .index
 herbie-data        ← GFS с публичных зеркал
 cdsapi             ← ERA5 и ряды в точке
 gcsfs, s3fs, fsspec
 pyarrow            ← Parquet для точечных рядов
 fastapi, uvicorn, pydantic
+xpublish           ← вторая полоса API: Zarr-эндпоинт поверх того же Dataset (P1)
+virtualizarr, icechunk  ← виртуальные чанки и транзакции (P1, только ECMWF и ERA5)
 apscheduler        ← планировщик цикла
 pytest, ruff, mypy, pre-commit
 structlog, prometheus-client
@@ -84,9 +87,13 @@ structlog, prometheus-client
 ```
 python 3.11–3.12
 torch (сборка под CUDA конкретного узла — уточнить версию драйвера!)
-microsoft-aurora
+microsoft-aurora   ← версия с классом `AuroraV1p5` и `fine_lead_times` в rollout
 xarray, zarr>=3, numpy
 ```
+
+Чекпоинты с Hugging Face (`microsoft/aurora`): веса `aurora-0.25-v1.5.ckpt`, статика
+`aurora-0.25-v1.5-static.pickle` — 36 полей, которые мы **не собираем сами**, и
+резервный `aurora-0.25-finetuned` для отладочного пути на четырёх приземных полях.
 
 Пакет модели ставится **отдельно** и общего venv с сервисом не имеет. Обмен между
 окружениями — только через хранилище и очередь, не через импорт кода.
