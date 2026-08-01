@@ -1,0 +1,89 @@
+"""Каноническая форма из docs/DATA_CONTRACT.md §1 и docs/DOMAIN.md §4–5.
+
+Один источник правды для адаптеров, валидаторов, хранилища и API. Числа здесь
+не «настройки», а контракт: поменять их — значит поменять формат хранилища
+и сломать всё, что уже записано.
+
+Модуль намеренно зависит только от numpy. Он не знает ни про xarray, ни про
+Zarr, ни про HTTP — иначе им нельзя пользоваться отовсюду.
+"""
+
+from typing import Final
+
+import numpy as np
+
+GRID_STEP: Final = 0.25
+
+# Широта строго убывает, долгота строго возрастает — docs/DATA_CONTRACT.md §1.
+# Округление до сотых обязательно: arange на float даёт 55.749999999999996,
+# и сравнение узла сетки с запросом пользователя перестаёт работать.
+LAT: Final[np.ndarray] = np.round(np.arange(90.0, -90.0 - GRID_STEP / 2, -GRID_STEP), 2)
+LON: Final[np.ndarray] = np.round(np.arange(-180.0, 180.0 - GRID_STEP / 2, GRID_STEP), 2)
+GRID_SHAPE: Final = (int(LAT.size), int(LON.size))
+GRID_POINTS: Final = GRID_SHAPE[0] * GRID_SHAPE[1]
+GRID_NAME: Final = "0.25deg-global"
+
+# Уровни давления в гПа. Порядок фиксированный и проверяется поэлементно:
+# Aurora принимает поля именно в этом порядке (docs/DOMAIN.md §5).
+PRESSURE_LEVELS: Final = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
+
+SURFACE_VARS: Final = ("2t", "10u", "10v", "msl")
+ATMOS_VARS: Final = ("t", "u", "v", "q", "z")
+STATIC_VARS: Final = ("lsm", "z", "slt")
+
+# 4 приземных + 5 × 13 на уровнях = 69. Это число входит во все расчёты объёма.
+FIELDS_PER_STEP: Final = len(SURFACE_VARS) + len(ATMOS_VARS) * len(PRESSURE_LEVELS)
+
+# СИ, docs/DOMAIN.md §4. Перевод в °C, гПа и мм — задача слоя API,
+# а не хранилища: константа 273.15 в storage/ или в adapters/ — симптом.
+UNITS: Final[dict[str, str]] = {
+    "2t": "K",
+    "10u": "m s-1",
+    "10v": "m s-1",
+    "msl": "Pa",
+    "t": "K",
+    "u": "m s-1",
+    "v": "m s-1",
+    "q": "kg kg-1",
+    "z": "m2 s-2",
+    "lsm": "1",
+    "slt": "1",
+    "tp": "m",
+}
+
+# docs/DATA_CONTRACT.md §4, уровень «физика». Границы включительные.
+# Диапазоны на уровнях давления шире приземных: на 50 гПа ветер и температура
+# ведут себя не так, как на 10 метрах.
+PHYSICAL_RANGES: Final[dict[str, tuple[float, float]]] = {
+    "2t": (180.0, 340.0),
+    "t": (150.0, 350.0),
+    "msl": (87_000.0, 108_500.0),
+    "10u": (-120.0, 120.0),
+    "10v": (-120.0, 120.0),
+    "u": (-150.0, 150.0),
+    "v": (-150.0, 150.0),
+    "q": (0.0, 0.05),
+    # Осадки за интервал, не накопление от начала прогона. Отрицательное
+    # значение — верный признак, что шаги вычли в обратном порядке
+    # (четвёртая ловушка, docs/DOMAIN.md §6).
+    "tp": (0.0, 1.0),
+}
+
+# Aurora авторегрессивна и шагает по 6 часов; промежуточных состояний
+# у неё не существует (docs/DOMAIN.md §3). 10 суток = 40 шагов.
+STEP_HOURS: Final = 6
+FORECAST_STEPS: Final = 40
+FORECAST_HOURS: Final = STEP_HOURS * FORECAST_STEPS
+
+# Допустимые значения поля `source` в ответе API — docs/DATA_CONTRACT.md §3.
+SOURCES: Final = (
+    "aurora-forecast",
+    "ifs-analysis",
+    "gfs-analysis",
+    "era5t",
+    "era5-final",
+    "climatology",
+)
+
+# Первый год ERA5. Запрос за более раннюю дату — 404, а не пустой ответ.
+HISTORY_START_YEAR: Final = 1940
