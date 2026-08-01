@@ -139,6 +139,20 @@ def encoding_for(ds: xr.Dataset, layout: Chunking) -> dict[str, dict[str, object
     return encoding
 
 
+def read_amplification(layout: Chunking, request: tuple[int, int, int, int]) -> float:
+    """Прочитано / нужно для выборки формы `request` по осям `(time, level, lat, lon)`.
+
+    Метрика раскладки (docs/STORAGE.md §3). Чанк распаковывается целиком, и
+    выборка тянет все чанки, которых коснулась: ряд в точке по раскладке карт
+    поднимает 1460 карт ради 1460 чисел — раздувание ×10⁶.
+    """
+    touched = 1
+    for axis, wanted in enumerate(request):
+        chunk = layout.chunk[axis]
+        touched *= -(-wanted // chunk) * chunk
+    return touched / _product(request)
+
+
 def layer_path(root: str | Path, layer: str) -> Path:
     """Путь слоя внутри хранилища. Неизвестное имя — ошибка, а не новый каталог."""
     if layer not in LAYER_PATHS:
