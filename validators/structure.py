@@ -2,7 +2,7 @@
 
 docs/DATA_CONTRACT.md §4, уровень «структура»: размерности (721, 1440),
 монотонность осей, отсутствие дубликатов и пропусков по времени, наличие
-всех 69 полей.
+всех полей набора (90 на срок у прогноза Aurora 1.5, docs/DOMAIN.md §5).
 
 Здесь ловится вторая ловушка docs/DOMAIN.md §6: сетка 0..360 вместо
 -180..180. Она не даёт ни исключения, ни NaN — просто Европа оказывается
@@ -17,17 +17,32 @@ from contracts import canon
 from validators.result import Check, fail, ok
 
 
-def check_structure(ds: xr.Dataset, *, expect_static: bool = False) -> list[Check]:
-    """Все структурные проверки разом. Возвращает и пройденные, и упавшие."""
+def check_structure(
+    ds: xr.Dataset,
+    *,
+    expect_static: bool = False,
+    surface_vars: tuple[str, ...] | None = None,
+    step_hours: int | None = None,
+) -> list[Check]:
+    """Все структурные проверки разом. Возвращает и пройденные, и упавшие.
+
+    `surface_vars` разделяет два набора, которых после Aurora 1.5 стало два:
+    вход анализа — 18 полей, выход прогноза — 25 (docs/DOMAIN.md §5).
+    По умолчанию проверяется выход: его записывают чаще и ошибаются в нём дороже.
+
+    `step_hours` — шаг, если вызывающий его знает. Слой прогноза знает всегда,
+    и тогда проверка строгая; без него сойдёт любой шаг из
+    `canon.STEP_HOURS_ALLOWED`, лишь бы один и тот же по всему набору.
+    """
     return [
         _grid_shape(ds),
         _lat_descending(ds),
         _lon_range(ds),
         _lon_ascending(ds),
         _levels_match(ds),
-        _fields_present(ds, expect_static=expect_static),
+        _fields_present(ds, expect_static=expect_static, surface_vars=surface_vars),
         _time_unique(ds),
-        _time_regular(ds),
+        _time_regular(ds, step_hours=step_hours),
     ]
 
 
@@ -93,8 +108,11 @@ def _levels_match(ds: xr.Dataset) -> Check:
     return ok("levels_match", "structure")
 
 
-def _fields_present(ds: xr.Dataset, *, expect_static: bool) -> Check:
-    required = set(canon.SURFACE_VARS) | set(canon.ATMOS_VARS)
+def _fields_present(
+    ds: xr.Dataset, *, expect_static: bool, surface_vars: tuple[str, ...] | None
+) -> Check:
+    surface = canon.SURFACE_STORED_VARS if surface_vars is None else surface_vars
+    required = set(surface) | set(canon.ATMOS_VARS)
     if expect_static:
         required |= set(canon.STATIC_VARS)
     got = {str(v) for v in ds.data_vars}
@@ -114,19 +132,25 @@ def _time_unique(ds: xr.Dataset) -> Check:
     return ok("time_unique", "structure", f"{time.size} steps")
 
 
-def _time_regular(ds: xr.Dataset) -> Check:
-    """Пропуск по времени — это молча укороченный прогноз, а не ошибка чтения."""
+def _time_regular(ds: xr.Dataset, *, step_hours: int | None = None) -> Check:
+    """Пропуск по времени — это молча укороченный прогноз, а не ошибка чтения.
+
+    Шагов после Aurora 1.5 два (6 ч и 1 ч), но в одном наборе — ровно один:
+    смесь шагов означает, что часовой слой и шестичасовой склеились при записи,
+    и любая сумма по времени после этого врёт.
+    """
     if "time" not in ds.coords:
         return fail("time_regular", "structure", "time", "missing", "coordinate present")
     time = np.asarray(ds["time"].values)
     if time.size < 2:
         return ok("time_regular", "structure", "single step")
+    allowed = (step_hours,) if step_hours is not None else canon.STEP_HOURS_ALLOWED
     # Сравнение точное, в наносекундах. astype("timedelta64[h]") округляет вниз,
     # и шаг 6 ч 1 мин читается как ровно 6: сдвиг времени — первая ловушка
     # docs/DOMAIN.md §6, ей нельзя давать пройти через округление.
     deltas = np.unique(np.diff(time).astype("timedelta64[ns]").astype("int64"))
-    expected = np.timedelta64(canon.STEP_HOURS, "h").astype("timedelta64[ns]").astype("int64")
-    if tuple(deltas) != (expected,):
+    expected = [np.timedelta64(h, "h").astype("timedelta64[ns]").astype("int64") for h in allowed]
+    if len(deltas) != 1 or int(deltas[0]) not in expected:
         got = [f"{int(d) / 3.6e12:g}h" for d in deltas]
-        return fail("time_regular", "structure", "time step", got, [f"{canon.STEP_HOURS}h"])
-    return ok("time_regular", "structure", f"{canon.STEP_HOURS}h step")
+        return fail("time_regular", "structure", "time step", got, [f"{h}h" for h in allowed])
+    return ok("time_regular", "structure", f"{int(deltas[0]) / 3.6e12:g}h step")

@@ -35,9 +35,10 @@ def test_helper_2t_keeps_the_global_mean_at_288_kelvin() -> None:
     assert 287.0 < mean < 289.0
 
 
-def test_helper_dataset_carries_all_69_fields_and_units() -> None:
+def test_helper_dataset_carries_all_90_stored_fields_and_units() -> None:
     ds = canonical_dataset()
-    assert set(canon.SURFACE_VARS) | set(canon.ATMOS_VARS) == {str(v) for v in ds.data_vars}
+    expected = set(canon.SURFACE_STORED_VARS) | set(canon.ATMOS_VARS)
+    assert expected == {str(v) for v in ds.data_vars}
     assert ds["2t"].attrs["units"] == "K"
     assert ds["msl"].attrs["units"] == "Pa"
 

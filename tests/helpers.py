@@ -7,8 +7,8 @@ docs/TESTING.md запрещает синтетику там, где прове�
 поймана ли она.
 
 Про память. Настоящая сетка — 721 × 1440, одно поле float32 весит 4.15 МБ,
-69 полей — 286 МБ на один тест. np.broadcast_to даёт read-only вид без
-копирования, поэтому набор из 69 «полей» стоит несколько килобайт.
+90 полей — 373 МБ на один тест. np.broadcast_to даёт read-only вид без
+копирования, поэтому набор из 90 «полей» стоит несколько килобайт.
 """
 
 from collections.abc import Iterable
@@ -18,7 +18,40 @@ import xarray as xr
 
 from contracts import canon
 
-SURFACE_DEFAULTS = {"2t": 288.0, "10u": 3.0, "10v": -2.0, "msl": 101_325.0}
+#: Правдоподобные значения — не косметика: помощник обязан проходить уровень
+#: «физика», иначе тест на испорченное поле зелёный по неправильной причине.
+#: Числа взяты из глобальных средних Aurora 1.5 (`aurora/normalisation.py`),
+#: кроме тех, где среднее равно нулю: константный ноль валит `not_constant`.
+SURFACE_DEFAULTS = {
+    "2t": 288.0,
+    "10u": 3.0,
+    "10v": -2.0,
+    "msl": 101_325.0,
+    "2d": 283.0,
+    "tcwv": 20.0,
+    "tcc": 0.67,
+    "100u": 5.0,
+    "100v": -3.0,
+    # Приземное давление ниже приведённого к уровню моря: суша выше моря.
+    "sp": 98_000.0,
+    "lcc": 0.3,
+    "mcc": 0.2,
+    "hcc": 0.1,
+    "skt": 289.0,
+    "stl1": 285.0,
+    "swvl1": 0.25,
+    "ci": 0.11,
+    "sd": 0.05,
+    "i10fg": 9.0,
+    "blh": 629.0,
+    "uvb_1h": 6.9e4,
+    "ssrd_1h": 5.9e5,
+    # Уходящее длинноволновое — всегда наружу, всегда со знаком минус.
+    "ttr_1h": -8.1e5,
+    "tp_1h": 1e-3,
+    "sf_1h": 2e-4,
+    "insolation": 340.0,
+}
 ATMOS_DEFAULTS = {"t": 250.0, "u": 10.0, "v": 5.0, "q": 0.004, "z": 50_000.0}
 
 #: Насколько поле «гуляет» по широте. Константное поле законно отвергается
@@ -51,8 +84,12 @@ def canonical_dataset(
     surface_vars: Iterable[str] | None = None,
     atmos_vars: Iterable[str] | None = None,
 ) -> xr.Dataset:
-    """Dataset в канонической форме: оси, уровни, единицы, атрибуты провенанса."""
-    surface = tuple(surface_vars) if surface_vars is not None else canon.SURFACE_VARS
+    """Dataset в канонической форме: оси, уровни, единицы, атрибуты провенанса.
+
+    По умолчанию — хранимый набор (без `insolation`): именно его валидаторы
+    ждут от того, что читается с диска.
+    """
+    surface = tuple(surface_vars) if surface_vars is not None else canon.SURFACE_STORED_VARS
     atmos = tuple(atmos_vars) if atmos_vars is not None else canon.ATMOS_VARS
 
     time = np.array(

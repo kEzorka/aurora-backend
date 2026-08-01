@@ -42,10 +42,63 @@ def test_pressure_levels_match_domain_doc_elementwise() -> None:
     )
 
 
-def test_sixty_nine_fields_per_step() -> None:
-    assert len(canon.SURFACE_VARS) == 4
+def test_ninety_one_fields_per_step() -> None:
+    """Числа из ADDENDUM-01 §3: 26 приземных + 65 на уровнях = 91."""
+    assert len(canon.SURFACE_VARS) == 26
     assert len(canon.ATMOS_VARS) * len(canon.PRESSURE_LEVELS) == 65
-    assert canon.FIELDS_PER_STEP == 69
+    assert canon.FIELDS_PER_STEP == 91
+
+
+def test_stored_step_is_one_field_smaller_than_model_step() -> None:
+    """`insolation` считается из времени, на диск не ложится.
+
+    Объёмы хранилища считаются по STORED_FIELDS_PER_STEP; спутать их — значит
+    заложить лишние 3 ГБ на прогон и не найти потом, откуда взялся перерасход.
+    """
+    assert canon.PRESCRIBED_VARS == ("insolation",)
+    assert canon.STORED_FIELDS_PER_STEP == canon.FIELDS_PER_STEP - 1
+    assert "insolation" not in canon.SURFACE_STORED_VARS
+
+
+def test_surface_sets_split_into_ingested_prescribed_and_output_only() -> None:
+    """Три части не пересекаются и вместе дают ровно SURFACE_VARS."""
+    ingested = set(canon.SURFACE_INGESTED_VARS)
+    prescribed = set(canon.PRESCRIBED_VARS)
+    output_only = set(canon.SURFACE_OUTPUT_ONLY_VARS)
+    assert len(ingested) == 18
+    assert len(output_only) == 7
+    assert ingested & prescribed == set()
+    assert ingested & output_only == set()
+    assert prescribed & output_only == set()
+    assert ingested | prescribed | output_only == set(canon.SURFACE_VARS)
+
+
+def test_hourly_layer_is_eight_variables_from_the_stored_set() -> None:
+    """Часовой слой — подмножество хранимого, иначе его нечем заполнить."""
+    assert len(canon.HOURLY_VARS) == 8
+    assert set(canon.HOURLY_VARS) <= set(canon.SURFACE_STORED_VARS)
+
+
+def test_accumulated_fields_keep_the_1h_suffix() -> None:
+    """Осадки Aurora 1.5 накоплены за час, а не за шаг прогноза (6 ч).
+
+    Имя без суффикса приглашает сложить четыре шестичасовых накопления за
+    сутки и завысить сумму в шесть раз — четвёртая ловушка docs/DOMAIN.md §6.
+    """
+    for name in ("tp_1h", "sf_1h", "ssrd_1h", "ttr_1h", "uvb_1h"):
+        assert name in canon.SURFACE_OUTPUT_ONLY_VARS
+    assert "tp" not in canon.SURFACE_VARS
+    assert "sf" not in canon.SURFACE_VARS
+
+
+def test_scaled_names_are_aurora_side_only() -> None:
+    """`scaled_` — способ нормировки внутри модели, а не единицы измерения.
+
+    В каноне поля физические (метры), переименование живёт в сборке батча.
+    """
+    assert canon.AURORA_SURFACE_NAMES["sd"] == "scaled_sd"
+    assert set(canon.AURORA_SURFACE_NAMES) <= set(canon.SURFACE_VARS)
+    assert not any(n.startswith("scaled_") for n in canon.SURFACE_VARS)
 
 
 def test_units_are_si() -> None:

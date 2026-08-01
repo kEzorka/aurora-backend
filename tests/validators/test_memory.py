@@ -1,6 +1,6 @@
 """Валидатор не имеет права загружать срез целиком.
 
-Один прогон — 40 шагов, 69 полей, 11.5 ГБ float32 (docs/PIPELINE.md §2).
+Один прогон — 40 шагов, 90 полей, 15 ГБ float32 (ADDENDUM-01 §3).
 Одна температура на уровнях давления — 2.2 ГБ, а приведение к float64 внутри
 проверки удваивает их. Проверка, которая делает `.values`, работает на
 синтетике 1×721×1440 и падает по памяти ровно там, где нужна: на настоящем
@@ -12,6 +12,7 @@ import pytest
 import xarray as xr
 
 from contracts import canon
+from tests.helpers import SURFACE_DEFAULTS
 from validators import validate
 
 dask_array = pytest.importorskip("dask.array")
@@ -52,8 +53,9 @@ def _lazy_canonical_dataset(steps: int) -> xr.Dataset:
             dims=("time", "level", "lat", "lon"),
         )
 
-    defaults = {"2t": 288.0, "10u": 3.0, "10v": -2.0, "msl": 101_325.0}
-    data: dict[str, xr.DataArray] = {n: surface(defaults[n]) for n in canon.SURFACE_VARS}
+    data: dict[str, xr.DataArray] = {
+        n: surface(SURFACE_DEFAULTS[n]) for n in canon.SURFACE_STORED_VARS
+    }
     for name, value in (("t", 250.0), ("u", 10.0), ("v", 5.0), ("q", 0.004), ("z", 50_000.0)):
         data[name] = atmos(value)
 
