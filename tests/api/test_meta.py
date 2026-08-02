@@ -9,13 +9,19 @@
 """
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
+import numpy as np
+import xarray as xr
 from fastapi.testclient import TestClient
 
 from api.app import create_app
 from contracts import canon
+from storage.manifest import Input, Model, build_manifest
+from storage.publish import publish_run, stage_path
 from storage.read import MAX_POINTS, MAX_STEPS
+from storage.write import write_layer
 
 COVERAGE = "/v1/meta/coverage"
 HEALTH = "/v1/health"
@@ -89,6 +95,76 @@ def test_every_offered_variable_is_actually_askable(client: TestClient) -> None:
     # Скорости ветра в хранилище нет; она предлагается, потому что лежат обе
     # составляющие, и без неё виджет считал бы гипотенузу сам.
     assert "wind" in names
+
+
+def _with_pressure_levels(root: Path) -> TestClient:
+    """Прогон, в котором рядом с приземным полем лежит поле на уровнях.
+
+    Общая фикстура кладёт только восемь приземных величин: 90 полей на
+    настоящей сетке стоят 373 МБ на срок. Но в прогоне их 91, и 65 из них —
+    на уровнях давления, поэтому проверять обещание покрытия на слое без
+    единого такого поля значит проверять его там, где ломаться нечему.
+    """
+    run_id = "2026-08-01T00Z"
+    # Восемь приземных — потому что публикация перекладывает их рядами в
+    # `points` и без них не работает; `t` — единственное, ради чего тест.
+    layer = canon.Layer("coarse", canon.HOURLY_VARS, ("t",), canon.STEP_HOURS, 1)
+    ds = xr.Dataset(
+        {
+            **{
+                name: (("time", "lat", "lon"), np.full((1, 1, 1), 288.15, dtype=np.float32))
+                for name in canon.HOURLY_VARS
+            },
+            "t": (("time", "level", "lat", "lon"), np.full((1, 2, 1, 1), 250.0, dtype=np.float32)),
+        },
+        coords={
+            "time": np.array(["2026-08-01T00"], dtype="datetime64[ns]"),
+            "level": np.array([500, 850], dtype="int32"),
+            "lat": [55.75],
+            "lon": [37.5],
+        },
+        attrs={"init_time": "2026-08-01T00:00:00Z"},
+    )
+    staged = stage_path(root, run_id)
+    write_layer(ds, staged / "coarse", layer)
+    # Часовой слой публикация требует целиком (`REQUIRED_LAYERS`), и уровней в
+    # нём не бывает: полей там восемь, все приземные.
+    hourly = canon.Layer("hourly", canon.HOURLY_VARS, (), canon.FINE_STEP_HOURS, 1)
+    write_layer(ds[list(canon.HOURLY_VARS)], staged / "hourly", hourly)
+    (staged / "validation.json").write_text('{"ok": true, "checks": []}', encoding="utf-8")
+    publish_run(
+        root,
+        run_id,
+        manifest=build_manifest(
+            f"forecast/{run_id}",
+            inputs=(Input("ifs-analysis", "2026-08-01T00:00Z", "sha256:" + "a" * 64),),
+            model=Model("aurora", "aurora-0.25-v1.5", "9f2c1ab"),
+            steps=1,
+            timings_sec={"ingest": 1, "normalize": 1, "inference": 1, "write": 1},
+            created_at=datetime(2026, 8, 1, 5, 0, 0, tzinfo=UTC),
+        ),
+    )
+    return TestClient(create_app(root), raise_server_exceptions=False)
+
+
+def test_a_field_on_pressure_levels_is_not_offered(tmp_path: Path) -> None:
+    """Полоса 1 не берёт `level` ни в точке, ни в сетке (§2), и на `t` отвечает
+    `400`. Предложить его — сделать в интерфейсе кнопку, которая не работает
+    никогда; уровни отдаёт полоса 2, `/zarr/`."""
+    client = _with_pressure_levels(tmp_path)
+    layer = next(
+        layer
+        for layer in client.get(COVERAGE).json()["layers"]
+        if layer["step_hours"] == canon.STEP_HOURS
+    )
+    names = [var["name"] for var in layer["vars"]]
+
+    assert "t" not in names
+    assert "t2m" in names
+    # То же обещание с другой стороны: имя, которого в покрытии нет, сервис и
+    # не обслуживает — значит выкинуто оно не по недосмотру.
+    refused = client.get("/v1/forecast/point", params={"lat": 55.75, "lon": 37.5, "vars": "t"})
+    assert refused.status_code == 400
 
 
 def test_units_come_with_the_names(client: TestClient) -> None:

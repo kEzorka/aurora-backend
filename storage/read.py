@@ -308,6 +308,12 @@ def coverage(run: str | Path) -> tuple[Span, ...]:
     Ключ — шаг в часах, а не имя слоя: `coarse`, `hourly` и `points` это
     слова хранилища, и фронтенд, узнавший их, начинает от них зависеть
     (docs/API_CONTRACT.md §2, `/v1/meta/coverage`).
+
+    Перечисляются только поля с осями `(time, lat, lon)`. Поля на уровнях
+    давления в слое лежат — их 65 из 91, — но ни точка, ни сетка не берут
+    `level` (§2), и обе отвечают на них отказом. Имя в покрытии — это
+    обещание, что его можно подставить в `vars`, а `t` дал бы кнопку,
+    которая всегда возвращает `400`. Уровни — полоса 2, `/zarr/`.
     """
     run = Path(run)
     spans: list[Span] = []
@@ -324,7 +330,7 @@ def coverage(run: str | Path) -> tuple[Span, ...]:
                     first=_iso(times[0]),
                     last=_iso(times[-1]),
                     steps=int(times.size),
-                    names=tuple(str(name) for name in ds.data_vars),
+                    names=tuple(str(name) for name in ds.data_vars if "level" not in ds[name].dims),
                 )
             )
     return tuple(spans)

@@ -239,6 +239,29 @@ def test_coverage_is_keyed_by_step_and_skips_the_copy(published: Path) -> None:
     assert set(hourly.names) == set(canon.HOURLY_VARS)
 
 
+def test_coverage_leaves_out_the_fields_on_pressure_levels(tmp_path: Path) -> None:
+    """На настоящей сетке в слое 65 полей на уровнях из 91. Ни точка, ни сетка
+    `level` не принимают и отвечают на них `400`, а имя в покрытии — обещание,
+    что его можно подставить в `vars`: `t` дал бы вечно нерабочую кнопку."""
+    layer = canon.Layer("coarse", ("2t",), ("t",), canon.STEP_HOURS, 1)
+    ds = xr.Dataset(
+        {
+            "2t": (("time", "lat", "lon"), np.full((1, 1, 1), 288.0, dtype=np.float32)),
+            "t": (("time", "level", "lat", "lon"), np.full((1, 2, 1, 1), 250.0, dtype=np.float32)),
+        },
+        coords={
+            "time": np.array(["2026-08-01T00"], dtype="datetime64[ns]"),
+            "level": np.array([500, 850], dtype="int32"),
+            "lat": [55.75],
+            "lon": [37.5],
+        },
+        attrs={"init_time": "2026-08-01T00:00:00Z"},
+    )
+    write_layer(ds, tmp_path / "coarse", layer)
+
+    assert read.coverage(tmp_path)[0].names == ("2t",)
+
+
 def test_coverage_of_a_run_without_layers_is_empty(tmp_path: Path) -> None:
     """Не исключение: «прогона нет» и «прогон пуст» — это один ответ читателю,
     и разбирать его на два в хранилище незачем."""
