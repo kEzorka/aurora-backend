@@ -191,6 +191,29 @@ def serve(
     return Served(tuple(paths), hits, len(chunks) - hits, latency_ms)
 
 
+def cold(
+    origin: Origin, variable: str, start: datetime, stop: datetime, *, root: str | Path
+) -> bool:
+    """Похоже ли, что запрос пойдёт наружу. Ничего не меняет и не считает.
+
+    Нужно ровно одному месту — счётчику холодных запросов к истории
+    (docs/API_CONTRACT.md §3, четыре разом): решать, занимать ли место в
+    очереди, надо **до** запроса, а `serve` к этому моменту уже сходил бы
+    наружу.
+
+    Смотрит на диск, а не в индекс, и это не экономия: `hit` двигает счётчики
+    доступа, по которым 3.3 решает, что вытеснять, и спрашивать его дважды
+    значит сделать все запросы к истории вдвое «горячее», чем они были.
+    Расхождение возможно (файл есть, строки в индексе нет) — стоит оно лишнего
+    места в очереди, а решает всё равно `serve`.
+    """
+    base = Path(root)
+    return any(
+        not _path(base, _key(origin, variable, chunk)).is_file()
+        for chunk in align(origin.grid, start, stop)
+    )
+
+
 def _download(
     conn: sqlite3.Connection,
     origin: Origin,
