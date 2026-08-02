@@ -54,6 +54,11 @@ ERA5T_NAMES: Final = {"ci": "sea_ice_cover"}
 #: Поэтому это параметр `plan`, а не константа внутри неё.
 ERA5T_LAG_DAYS: Final = 5
 
+#: Что вообще качается. Не `canon.UNITS`: там есть `insolation`, который модель
+#: считает сама из времени и геометрии, и семь полей «только на выход», которых
+#: в анализе нет. Запрос на них ушёл бы в `ifs/0p25/oper` и вернул пустоту.
+DOWNLOADABLE: Final = canon.SURFACE_INGESTED_VARS + canon.ATMOS_VARS + canon.STATIC_VARS
+
 #: Поля, которые разрешено переносить вперёд с чужого срока. Список ровно один
 #: и совпадает с `FROM_ERA5T` не случайно: переносить можно то, что за эти сутки
 #: почти не меняется, а туда попало то, чего на нужный срок просто нет.
@@ -87,9 +92,9 @@ def plan(
     от запуска к запуску значит делать два одинаковых прогона разными на вид.
     """
     wanted = _unique(names)
-    unknown = [name for name in wanted if name not in canon.UNITS]
+    unknown = [name for name in wanted if name not in DOWNLOADABLE]
     if unknown:
-        raise AdapterError("names", unknown, sorted(canon.UNITS))
+        raise AdapterError("names", unknown, sorted(DOWNLOADABLE))
 
     groups: dict[tuple[str, str, str], list[str]] = {}
     for name in wanted:

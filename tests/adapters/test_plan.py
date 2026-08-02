@@ -14,7 +14,7 @@ import xarray as xr
 
 from adapters import ecmwf
 from adapters.errors import AdapterError
-from adapters.plan import ERA5T_STREAM, Request, assemble, plan
+from adapters.plan import ERA5T_NAMES, ERA5T_STREAM, Request, assemble, plan
 from contracts import canon
 
 NOON = "2026-08-01T00:00:00Z"
@@ -42,6 +42,35 @@ def _slice(names: tuple[str, ...], valid_time: str, *, source: str = ecmwf.SOURC
             "kind": "analysis",
             "adapter_version": ecmwf.ADAPTER_VERSION,
         },
+    )
+
+
+def _part(names: tuple[str, ...], valid_time: str, *, source: str = ecmwf.SOURCE) -> xr.Dataset:
+    """Кусок, в котором есть и приземные поля, и поля на уровнях.
+
+    Так выглядит настоящая загрузка: один поток отдаёт `2t` и `t` на тринадцати
+    уровнях одним файлом, и разделять их по запросам незачем.
+    """
+    surface = tuple(name for name in names if name not in canon.ATMOS_VARS)
+    atmos = tuple(name for name in names if name in canon.ATMOS_VARS)
+    flat = _slice(surface, valid_time, source=source)
+    if not atmos:
+        return flat
+    tall = xr.Dataset(
+        {
+            name: xr.DataArray(
+                np.full((1, 2, 1, 1), 1.0, dtype=np.float32),
+                dims=("time", "level", "lat", "lon"),
+                attrs={"units": canon.UNITS[name]},
+            )
+            for name in atmos
+        },
+        coords={**flat.coords, "level": [500, 850]},
+    )
+    return (
+        xr.merge([flat, tall], combine_attrs="override")
+        if surface
+        else tall.assign_attrs(flat.attrs)
     )
 
 
@@ -186,6 +215,42 @@ def test_a_missing_field_is_named() -> None:
 
     with pytest.raises(AdapterError, match="ci"):
         assemble(parts, valid_time=NOON)
+
+
+def test_fields_on_pressure_levels_keep_their_level_axis() -> None:
+    """Вход модели — не только приземные поля: 65 из 91 лежат на уровнях
+    (ADDENDUM-01 §1). `xr.merge` объединяет координаты, и поле с `level` рядом
+    с приземными — ровно то место, где склейка либо выравнивает оси, либо тихо
+    размазывает приземное поле по уровням."""
+    planned = plan(NOON, canon.SURFACE_INGESTED_VARS + canon.ATMOS_VARS)
+    parts = [
+        (request, _part(request.names, request.valid_time, source=request.source))
+        for request in planned
+    ]
+
+    slab = assemble(parts, valid_time=NOON, names=canon.SURFACE_INGESTED_VARS + canon.ATMOS_VARS)
+
+    assert slab["t"].dims == ("time", "level", "lat", "lon")
+    assert slab["2t"].dims == ("time", "lat", "lon")
+    assert slab["t"].attrs["stream"] == ecmwf.STREAM_DEFAULT
+    assert list(slab["level"].values) == [500, 850]
+
+
+def test_every_field_taken_from_era5t_has_a_name_in_cds() -> None:
+    """`FROM_ERA5T` говорит, что поле берётся из CDS, `ERA5T_NAMES` — под каким
+    именем его там спрашивать. Разъехавшись, эти две таблицы дают отказ CDS уже
+    на загрузке, и звучит он не про имя поля."""
+    assert set(ecmwf.FROM_ERA5T) == set(ERA5T_NAMES)
+    assert ERA5T_NAMES["ci"] == "sea_ice_cover"
+
+
+def test_a_field_the_model_computes_itself_is_not_downloaded() -> None:
+    """`insolation` есть в каноне единиц, но его не публикует никто: модель
+    считает его из времени и геометрии. Запрос ушёл бы в `ifs/0p25/oper` и
+    вернул пустоту — отказ здесь дешевле пустого ответа там."""
+    assert "insolation" in canon.UNITS
+    with pytest.raises(AdapterError, match="insolation"):
+        plan(NOON, ("2t", "insolation"))
 
 
 def test_nothing_downloaded_is_not_an_empty_slice() -> None:
