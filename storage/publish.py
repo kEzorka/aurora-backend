@@ -12,9 +12,15 @@
 2. записать манифест с `published: false`;
 3. `os.replace` каталога: scratch и runs лежат на одной файловой системе,
    поэтому переезд атомарен и не стоит второй копии 17.4 ГБ;
-4. свернуть прошлый прогон в восемь переменных (`forecast/previous`);
-5. поднять `published` — последняя запись внутрь артефакта;
-6. переставить указатели.
+4. переложить восемь шестичасовых переменных рядами (`points`);
+5. свернуть прошлый прогон в восемь переменных (`forecast/previous`);
+6. поднять `published` — последняя запись внутрь артефакта;
+7. переставить указатели.
+
+`points` строится здесь, а не в конвейере, и до подъёма флага: `published`
+означает «всё, что читатель может спросить, лежит на диске». Прогон без него
+читается: `storage.read` отступает на `coarse`, — но отвечает вместо 4 мс все
+300 (docs/STORAGE.md §3).
 
 Прошлый прогон сворачивается, а не переподписывается целиком: 15.0 ГБ
 шестичасового слоя в двух экземплярах — это 30 ГБ при ядре в 40
@@ -52,6 +58,10 @@ PREVIOUS_LINK: Final = "forecast/previous"
 
 #: Имя свёрнутого слоя внутри прогона, на который смотрит `forecast/previous`.
 PREVIOUS_LAYER: Final = "previous"
+
+#: Те же восемь шестичасовых переменных, что в `previous`, но в текущем
+#: прогоне и рядами: точечная полоса `/v1/forecast/point` (docs/STORAGE.md §3).
+POINTS_LAYER: Final = "points"
 
 
 def stage_path(root: str | Path, run_id: str) -> Path:
@@ -104,7 +114,8 @@ def publish_run(root: str | Path, run_id: str, *, manifest: Mapping[str, Any]) -
     final.parent.mkdir(parents=True, exist_ok=True)
     os.replace(staged, final)
 
-    reduced = _reduce_previous(outgoing) if outgoing is not None else None
+    _derive(final, POINTS_LAYER)
+    reduced = _derive(outgoing, PREVIOUS_LAYER) if outgoing is not None else None
 
     mark_published(final / MANIFEST_NAME)
 
@@ -114,23 +125,30 @@ def publish_run(root: str | Path, run_id: str, *, manifest: Mapping[str, Any]) -
     return final
 
 
-def _reduce_previous(run: Path) -> Path:
-    """Свернуть прогон до восьми шестичасовых переменных (docs/STORAGE.md §2).
+def _derive(run: Path, layer: str) -> Path:
+    """Собрать из `coarse` производный слой того же прогона.
 
-    Свёртка идёт в соседний каталог и переезжает переименованием. Пишется она
-    внутрь прогона, который читатель прямо сейчас видит как `forecast/current`,
-    и занимает это минуты: оборванная запись оставила бы на месте `previous`
-    половину Zarr, а следующая публикация приняла бы её за готовую и показала
-    читателю прогноз без половины шагов.
+    Так делаются оба: `previous` — свёртка до восьми переменных
+    (docs/STORAGE.md §2), `points` — те же восемь, но рядами (§3).
+
+    Слой пишется в соседний каталог и переезжает переименованием. Пишется он
+    внутрь прогона, который читатель прямо сейчас видит или увидит через
+    минуту, и занимает это минуты: оборванная запись оставила бы на месте
+    готового слоя половину Zarr, а следующий читатель принял бы её за целую
+    и получил прогноз без половины шагов.
+
+    Источник открывается без dask (`chunks=None`): раскладку карт в раскладку
+    рядов dask перекладывает так, что под каждый шард рядов поднимает все
+    карты слоя заново, — переворот идёт по переменной, 166 МБ за раз.
     """
-    target = run / PREVIOUS_LAYER
+    target = run / layer
     if target.is_dir():
         return target
-    staging = run / (PREVIOUS_LAYER + ".tmp")
+    staging = run / (layer + ".tmp")
     if staging.exists():
         shutil.rmtree(staging)
-    with xr.open_zarr(run / "coarse") as coarse:
-        write_layer(coarse, staging, canon.LAYERS[PREVIOUS_LAYER])
+    with xr.open_zarr(run / "coarse", chunks=None) as coarse:
+        write_layer(coarse, staging, canon.LAYERS[layer])
     os.replace(staging, target)
     return target
 

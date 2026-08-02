@@ -91,6 +91,21 @@ def test_published_run_is_reachable_through_the_current_pointer(tmp_path: Path) 
     assert read_manifest(final / "manifest.json")["published"] is True
 
 
+def test_publication_builds_the_point_layer(tmp_path: Path) -> None:
+    """`points` собирается публикацией и до подъёма флага: `published`
+    означает «всё, что читатель спросит, лежит на диске». Прогон без него
+    читается через отступ на `coarse` — молча и в сто раз медленнее
+    (docs/STORAGE.md §3)."""
+    _stage(tmp_path, "2026-08-01T00Z")
+    final = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+
+    assert (final / "points").is_dir()
+    assert not (final / "points.tmp").exists()
+    np.testing.assert_allclose(
+        xr.open_zarr(final / "points")["2t"].values, xr.open_zarr(final / "coarse")["2t"].values
+    )
+
+
 def test_every_artifact_carries_both_files(tmp_path: Path) -> None:
     """Приёмка 2.4: манифест и отчёт валидатора лежат рядом с данными, и
     манифест ссылается на отчёт по имени — ссылка обязана вести в файл."""

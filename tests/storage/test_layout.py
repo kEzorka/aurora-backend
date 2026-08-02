@@ -15,6 +15,8 @@ from storage.layout import (
     Chunking,
     layer_bytes,
     layer_path,
+    layout_for,
+    pinned_bytes,
     run_bytes,
     select_layer,
 )
@@ -33,10 +35,19 @@ def test_previous_run_weighs_a_tenth_of_the_current_one() -> None:
 
 
 def test_pinned_forecast_layers_fit_the_run_budget() -> None:
-    """Закреплено прогнозом три слоя: текущий шестичасовой, текущий часовой и
-    прошлый прогон. Вместе 18.7 ГБ — это меньше половины ядра в 40 ГБ, где ещё
-    лежат анализ, месячные средние и последние 30 суток (docs/STORAGE.md §2)."""
-    assert run_bytes() + layer_bytes(canon.LAYERS["previous"]) <= 19 * 10**9
+    """Закреплено прогнозом четыре слоя: текущий шестичасовой, текущий часовой,
+    точечная копия шестичасового и прошлый прогон. Вместе 20.1 ГБ — половина
+    ядра в 40 ГБ, где ещё лежат анализ, месячные средние и последние 30 суток
+    (docs/STORAGE.md §2)."""
+    assert pinned_bytes() == pytest.approx(20.1e9, rel=0.02)
+    assert pinned_bytes() <= 21 * 10**9
+
+
+def test_the_point_copy_costs_a_previous_run() -> None:
+    """`points` — не новые данные, а те же восемь шестичасовых переменных
+    рядами: 1.33 ГБ, ровно как свёртка прошлого прогона (docs/STORAGE.md §3)."""
+    assert layer_bytes(canon.LAYERS["points"]) == layer_bytes(canon.LAYERS["previous"])
+    assert run_bytes() == pytest.approx(17.4e9, rel=0.01)  # копия в бюджет не входит
 
 
 def test_layer_sizes_match_the_documented_numbers() -> None:
@@ -55,10 +66,21 @@ def test_hourly_layer_is_exactly_eight_variables() -> None:
     assert hourly.fields == 8 * 72
 
 
+def test_each_layer_carries_its_own_layout() -> None:
+    """Раскладка — свойство слоя, а не аргумент вызова. `coarse` читают
+    картами, `points` и `hourly` — рядами в точке: часовую карту не спрашивает
+    никто, `/v1/forecast/grid` округляет время до шестичасового срока
+    (docs/API_CONTRACT.md §2)."""
+    assert layout_for("coarse") == LAYOUT_A
+    assert layout_for("hourly") == LAYOUT_B
+    assert layout_for("points") == LAYOUT_B
+
+
 def test_layer_paths_are_the_documented_ones() -> None:
     """Имена каталогов — интерфейс: по ним CLI определяет слой."""
     assert layer_path("/data", "coarse").as_posix() == "/data/forecast/current/coarse"
     assert layer_path("/data", "hourly").as_posix() == "/data/forecast/current/hourly"
+    assert layer_path("/data", "points").as_posix() == "/data/forecast/current/points"
     assert layer_path("/data", "analysis").as_posix() == "/data/analysis/recent"
 
 

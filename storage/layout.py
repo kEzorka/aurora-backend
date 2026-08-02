@@ -34,6 +34,7 @@ LAYER_PATHS: Final[Mapping[str, str]] = MappingProxyType(
     {
         "coarse": "forecast/current/coarse",
         "hourly": "forecast/current/hourly",
+        "points": "forecast/current/points",
         "previous": "forecast/previous",
         "analysis": "analysis/recent",
     }
@@ -94,6 +95,32 @@ LAYOUT_B: Final = Chunking(
     chunk=(STEPS_PER_YEAR, 1, 4, 4),
     shard=(STEPS_PER_YEAR, 1, 64, 64),
 )
+
+
+#: Какому слою какая раскладка. Не аргумент вызова: слой и его форма — одно
+#: решение, и записать `coarse` рядами (или `points` картами) значит получить
+#: слой, который на свой запрос отвечает в сто раз дольше, ничем себя не выдав.
+#:
+#: `hourly` лежит рядами, а не картами, и второго экземпляра у него нет:
+#: карту часового слоя не читает никто — `/v1/forecast/grid` округляет `time`
+#: до ближайшего шестичасового срока (docs/API_CONTRACT.md §2). Ряд в точке из
+#: него читают, и раскладка карт стоила бы там 80–300 мс.
+_LAYOUT_BY_LAYER: Final[Mapping[str, Chunking]] = MappingProxyType(
+    {
+        "coarse": LAYOUT_A,
+        "hourly": LAYOUT_B,
+        "points": LAYOUT_B,
+        "previous": LAYOUT_A,
+        "analysis": LAYOUT_A,
+    }
+)
+
+
+def layout_for(layer: str) -> Chunking:
+    """Раскладка слоя по имени. Незнакомое имя — карты: неизвестный слой чаще
+    всего карта, и ошибиться в эту сторону дешевле, чем разложить рядами то,
+    что читают целиком."""
+    return _LAYOUT_BY_LAYER.get(layer, LAYOUT_A)
 
 
 #: Оси раскладки по именам канона. Порядок тот же, что в `Chunking.chunk`.
@@ -167,8 +194,20 @@ def layer_bytes(layer: canon.Layer) -> int:
 
 
 def run_bytes() -> int:
-    """Вес одного прогона: шестичасовой слой плюс часовой."""
+    """Вес одного прогона: шестичасовой слой плюс часовой — то, что выдала
+    модель (`ADDENDUM-01` §3: 15.0 + 2.4 = 17.4 ГБ).
+
+    `points` сюда не входит, как не входит `previous`: это не новые данные, а
+    копия части `coarse` в другой раскладке. Закреплённое на диске считает
+    `pinned_bytes`.
+    """
     return layer_bytes(canon.LAYERS["coarse"]) + layer_bytes(canon.LAYERS["hourly"])
+
+
+def pinned_bytes() -> int:
+    """Сколько прогноз держит на диске: прогон, его точечная копия и свёртка
+    прошлого прогона — 17.4 + 1.33 + 1.33 = 20.1 ГБ из ядра в 40 ГБ."""
+    return run_bytes() + layer_bytes(canon.LAYERS["points"]) + layer_bytes(canon.LAYERS["previous"])
 
 
 def select_layer(ds: xr.Dataset, layer: canon.Layer) -> xr.Dataset:

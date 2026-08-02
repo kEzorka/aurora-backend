@@ -273,6 +273,12 @@ LAYERS: Final[Mapping[str, Layer]] = MappingProxyType(
         "hourly": Layer("hourly", HOURLY_VARS, (), FINE_STEP_HOURS, FINE_HORIZON_HOURS),
         # Вход инференса: два шага анализа, 18 приземных полей (ADDENDUM-01 §1).
         "analysis": Layer("analysis", SURFACE_INGESTED_VARS, ATMOS_VARS, STEP_HOURS, 2),
+        # Те же восемь переменных шестичасовыми, но в раскладке рядов: ряд в
+        # точке по раскладке карт поднимает по карте на срок — 664 МБ ради
+        # 160 чисел, 80–300 мс вместо 4 (docs/STORAGE.md §3, замер BACKLOG 5.1).
+        # Это копия части `coarse`, а не новые данные: 1.33 ГБ поверх бюджета
+        # прогона, ровно как у `previous`.
+        "points": Layer("points", HOURLY_VARS, (), STEP_HOURS, FORECAST_STEPS),
         # Прошлый прогон: те же восемь переменных, но шестичасовые — 1.3 ГБ
         # против 15.0 (docs/STORAGE.md §2). Держать прошлый прогон целиком
         # нельзя: два шестичасовых слоя — это уже 30 ГБ при ядре в 40.

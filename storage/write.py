@@ -13,7 +13,7 @@ from typing import cast
 import xarray as xr
 
 from contracts import canon
-from storage.layout import LAYOUT_A, Chunking, encoding_for, select_layer
+from storage.layout import Chunking, encoding_for, layout_for, select_layer
 
 
 def write_layer(
@@ -21,9 +21,13 @@ def write_layer(
     path: str | Path,
     layer: canon.Layer,
     *,
-    layout: Chunking = LAYOUT_A,
+    layout: Chunking | None = None,
 ) -> Path:
     """Записать слой и вернуть путь, по которому он лёг.
+
+    Раскладка по умолчанию — та, что закреплена за именем слоя
+    (`layout.layout_for`): забытый аргумент дал бы слой, который на свой
+    запрос отвечает в сто раз дольше и ничем себя не выдаёт.
 
     Валидация здесь не вызывается намеренно: проверяется записанное, а не то,
     что собирались записать (docs/PIPELINE.md §3), — иначе проверка не увидит
@@ -34,7 +38,7 @@ def write_layer(
         raise FileExistsError(f"{target}: слой уже записан, пишите в новый ключ")
 
     selected = select_layer(ds, layer)
-    encoding = encoding_for(selected, layout)
+    encoding = encoding_for(selected, layout if layout is not None else layout_for(layer.name))
     _align_chunks(selected, encoding).to_zarr(
         target,
         mode="w-",
