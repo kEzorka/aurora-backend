@@ -22,8 +22,9 @@
 ECMWF (`adapters.ecmwf.STREAMS`). Поэтому за срез анализа берётся `0h` в обоих
 потоках, а не прогноз на шесть часов вперёд с прошлого прогона.
 
-ERA5T сюда не ходит: это CDS с очередью и заявками, другой протокол целиком
-(BACKLOG 1.6). Запрос на него отвергается, а не молча даёт пустой файл.
+ERA5T сюда не ходит: это CDS с очередью и заявками, другой протокол целиком, и
+качает его `adapters.era5_grid`. Запрос на него отвергается, а не молча даёт
+пустой файл.
 """
 
 from __future__ import annotations
@@ -122,7 +123,9 @@ def download(
     в другом месте.
     """
     if request.source != ecmwf.SOURCE:
-        raise AdapterError("source", request.source, f"{ecmwf.SOURCE} (ERA5T — это BACKLOG 1.6)")
+        raise AdapterError(
+            "source", request.source, f"{ecmwf.SOURCE} (ERA5T качает adapters.era5_grid)"
+        )
     index = fetch_document(
         index_url(request, step=step), transport=transport, delays=delays, sleep=sleep
     )
