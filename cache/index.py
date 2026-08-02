@@ -399,7 +399,10 @@ def mark_absent(
             reason = excluded.reason,
             until = excluded.until
         """,
-        note,
+        # Значения перечислены поимённо, а не кортежем `note`: подстановка идёт
+        # по порядку, и перестановка полей `Absent` тихо записала бы причину в
+        # ключ. Тот же род ошибки, что подмена `tuple.index` методом.
+        (note.key, note.reason, note.since, note.until),
     )
     return note
 
@@ -433,6 +436,16 @@ def expire_absent(conn: sqlite3.Connection, *, now: float | None = None) -> int:
     таблице навсегда.
     """
     return int(conn.execute("delete from absent where until <= ?", (_moment(now),)).rowcount)
+
+
+def stale_absent(conn: sqlite3.Connection, *, now: float | None = None) -> int:
+    """Сколько отказов протухло. Считает то же, что убрал бы `expire_absent`.
+
+    Нужна `--dry-run` чистки: команда обязана показывать то же самое, что
+    сделает без флага, включая уборку, о которой её не просили.
+    """
+    row = conn.execute("select count(*) from absent where until <= ?", (_moment(now),)).fetchone()
+    return int(row[0])
 
 
 def _entry(row: sqlite3.Row) -> Entry:

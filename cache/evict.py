@@ -33,7 +33,17 @@ import time
 from pathlib import Path
 from typing import Final, NamedTuple
 
-from cache.index import Entry, Key, default_index, entries, forget, open_index, total_bytes
+from cache.index import (
+    Entry,
+    Key,
+    default_index,
+    entries,
+    expire_absent,
+    forget,
+    open_index,
+    stale_absent,
+    total_bytes,
+)
 
 #: Порог запуска чистки — доля занятого места (docs/CACHE.md §2).
 HIGH_WATER: Final = 0.85
@@ -239,12 +249,19 @@ def main(argv: list[str] | None = None, *, now: float | None = None) -> int:
         if args.dry_run:
             for found in doomed(conn, limits=limits, now=moment):
                 print(f"снесла бы {found.key} ({found.bytes} байт)")
+            print(f"протухших отказов сняла бы {stale_absent(conn, now=moment)}")
             return 0
 
+        # Отказы чистятся до вытеснения и независимо от ватермарок: они не
+        # занимают места на диске, и чистка по заполнению их бы не тронула
+        # никогда. Уборка тут потому, что это единственная команда кэша,
+        # которую запускает расписание.
+        expired = expire_absent(conn, now=moment)
         swept = sweep(conn, limits=limits, now=moment)
         for key in swept.removed:
             print(f"снесено {key}")
         print(f"занято {swept.after} из {limits.capacity_bytes} байт, освобождено {swept.freed}")
+        print(f"протухших отказов снято {expired}")
         if not swept.enough:
             print(f"до {swept.target} байт не дочистили: остаток запиннён")
             return 1

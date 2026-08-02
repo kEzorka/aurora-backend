@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from cache.evict import main
 from cache.index import (
     NEGATIVE_TTL_S,
     Key,
@@ -219,6 +220,45 @@ def test_expiring_takes_the_stale_rows_and_leaves_the_live_ones(
 
     assert expire_absent(index, now=NOW) == 1
     assert absent(index, KEY, now=NOW) is not None
+
+
+def test_the_scheduled_sweep_takes_the_stale_refusals(
+    index: sqlite3.Connection, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`expire_absent` без вызывающего — это функция, которую написали от
+    поломки и не подключили: ни ruff, ни mypy на неё не пожалуются, а таблица
+    растёт. Зовёт её плановая чистка — единственная команда кэша в расписании.
+
+    Заполнение при этом нулевое: отказы не занимают места, и чистка по
+    ватермаркам их бы не тронула никогда.
+    """
+    mark_absent(index, KEY, reason="нет в ERA5", now=NOW - NEGATIVE_TTL_S - 1)
+    index.close()
+
+    assert main([str(tmp_path / "cache.sqlite")], now=NOW) == 0
+
+    assert "протухших отказов снято 1" in capsys.readouterr().out
+    assert (
+        open_index(tmp_path / "cache.sqlite").execute("select count(*) from absent").fetchone()[0]
+        == 0
+    )
+
+
+def test_the_dry_run_counts_the_stale_refusals_and_keeps_them(
+    index: sqlite3.Connection, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--dry-run` показывает, что сделала бы команда, — включая уборку, о
+    которой её не просили. Удалять при этом не имеет права."""
+    mark_absent(index, KEY, reason="нет в ERA5", now=NOW - NEGATIVE_TTL_S - 1)
+    index.close()
+
+    assert main([str(tmp_path / "cache.sqlite"), "--dry-run"], now=NOW) == 0
+
+    assert "протухших отказов сняла бы 1" in capsys.readouterr().out
+    assert (
+        open_index(tmp_path / "cache.sqlite").execute("select count(*) from absent").fetchone()[0]
+        == 1
+    )
 
 
 def test_a_refusal_taken_off_by_hand_is_gone(index: sqlite3.Connection) -> None:
