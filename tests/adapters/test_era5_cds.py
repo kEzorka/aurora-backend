@@ -184,7 +184,8 @@ def test_the_preliminary_mark_covers_the_whole_series() -> None:
         "2t", *MOSCOW, START, END, retriever=_retriever(_csv(times, [250.0, 251.0])), now=now
     )
 
-    fresh_times = _hours(now - timedelta(days=2), now - timedelta(days=2, hours=-1))
+    two_days_ago = now - timedelta(days=2)
+    fresh_times = _hours(two_days_ago, two_days_ago + timedelta(hours=1))
     fresh = era5_cds.read_series(
         "2t",
         *MOSCOW,
