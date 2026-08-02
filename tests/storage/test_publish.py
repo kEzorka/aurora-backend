@@ -133,7 +133,9 @@ def test_the_layers_lie_on_disk_in_the_layouts_they_were_promised(tmp_path: Path
     final = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
 
     def time_chunk(layer: str) -> int:
-        return int(zarr.open_group(str(final / layer))["2t"].chunks[0])
+        # `open_array`, а не `open_group(...)["2t"]`: индексация группы даёт
+        # `Array | Group`, и у второго нет `chunks` — mypy это ловит.
+        return int(zarr.open_array(str(final / layer / "2t")).chunks[0])
 
     assert time_chunk("coarse") == 1  # карты
     assert time_chunk("points") == 2  # ряды: вся ось времени тестового прогона
