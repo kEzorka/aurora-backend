@@ -12,10 +12,18 @@
 ещё и отдельный столбец: «заменить всё, что записано ERA5T» — это запрос
 `where source_version = 'era5t'`, а не поиск подстроки в ключе.
 
-Таблиц две, и путать их не надо (§4). `cache_index` — что физически лежит на
-диске; без неё вытеснение невозможно. `query_log` — что спрашивали люди; в
-работе кэша она не участвует вовсе, поэтому неудача записи в журнал не имеет
-права уронить чтение из кэша.
+Таблиц три. `cache_index` — что физически лежит на диске; без неё вытеснение
+невозможно. `query_log` — что спрашивали люди; в работе кэша она не участвует
+вовсе, поэтому неудача записи в журнал не имеет права уронить чтение из кэша.
+Путать эти две не надо (§4).
+
+Третья, `absent`, — отрицательный кэш (§3.3): чего в источнике ещё нет.
+Отдельной таблицей, а не флагом в `cache_index`, намеренно. Строка `cache_index`
+означает файл на диске: у неё есть размер, путь и цена восстановления, по ним
+считает вытеснение и заполненность. У отрицательного ответа нет ни файла, ни
+байтов, и живёт он не до вытеснения, а до срока. Флагом в общей таблице каждый
+её читатель — `total_bytes`, `entries`, отчёт, чистка — обязан был бы помнить
+про исключение; отдельной таблицей помнить нечего.
 
 Режим журнала — WAL: воркер пишет, API читает, и они друг друга не ждут.
 Отсюда два следствия. Первое: файл индекса обязан лежать на локальном диске —
@@ -55,6 +63,12 @@ ROOT_ENV: Final = "AURORA_ROOT"
 DEFAULT_ROOT: Final = "/data/aurora"
 INDEX_NAME: Final = "cache/index.sqlite"
 
+#: Сколько живёт отрицательный ответ (docs/CACHE.md §3.3). Шесть часов — это
+#: компромисс: реанализ отстаёт на ~5 суток, и данные, которых нет сейчас, не
+#: появятся через минуту, но и держать отказ сутками нельзя — пришедшие данные
+#: ждали бы своей очереди дольше, чем шли.
+NEGATIVE_TTL_S: Final = 6 * 3_600.0
+
 #: Список origin для `check` — собран, а не взят из `repr` кортежа: `repr`
 #: пишет висячую запятую, когда значение остаётся одно, и схема перестаёт
 #: создаваться в тот день, когда список сократят.
@@ -92,6 +106,14 @@ create table if not exists query_log (
     latency_ms integer not null
 );
 create index if not exists query_log_ts on query_log (ts);
+
+create table if not exists absent (
+    key    text primary key,
+    reason text not null,
+    since  real not null,
+    until  real not null
+);
+create index if not exists absent_until on absent (until);
 """
 
 
@@ -136,6 +158,19 @@ class Entry(NamedTuple):
     cost_ms: int
     pinned: bool
     created_at: float
+
+
+class Absent(NamedTuple):
+    """Строка `absent` — отказ источника, запомненный до срока.
+
+    `reason` хранится ради дежурного: «нет в ERA5» и «origin отказал» чинятся
+    по-разному, а на пути запроса разницы уже не видно.
+    """
+
+    key: str
+    reason: str
+    since: float
+    until: float
 
 
 def default_index() -> Path:
@@ -339,6 +374,65 @@ def log_query(
     except sqlite3.Error:
         return False
     return True
+
+
+def mark_absent(
+    conn: sqlite3.Connection,
+    key: Key,
+    *,
+    reason: str,
+    ttl_s: float = NEGATIVE_TTL_S,
+    now: float | None = None,
+) -> Absent:
+    """Запомнить, что данных в источнике нет (docs/CACHE.md §3.3).
+
+    Повторный отказ продлевает срок, а не заводит вторую строку: пользователь,
+    который тычет в завтрашнюю дату, обновляет свой же отказ, а не растит
+    таблицу.
+    """
+    moment = _moment(now)
+    note = Absent(key=key.text(), reason=reason, since=moment, until=moment + ttl_s)
+    conn.execute(
+        """
+        insert into absent (key, reason, since, until) values (?, ?, ?, ?)
+        on conflict(key) do update set
+            reason = excluded.reason,
+            until = excluded.until
+        """,
+        note,
+    )
+    return note
+
+
+def absent(conn: sqlite3.Connection, key: Key, *, now: float | None = None) -> Absent | None:
+    """Отказ по ключу, пока он не протух. Иначе `None`.
+
+    Срок проверяется на чтении, а не чисткой по расписанию: чистка, не
+    запустившаяся из-за упавшего таймера, иначе держала бы пришедшие данные
+    невидимыми — а это ровно та поломка, которую отрицательный кэш обязан не
+    создавать.
+    """
+    row = conn.execute(
+        "select * from absent where key = ? and until > ?", (key.text(), _moment(now))
+    ).fetchone()
+    if row is None:
+        return None
+    return Absent(key=row["key"], reason=row["reason"], since=row["since"], until=row["until"])
+
+
+def forget_absent(conn: sqlite3.Connection, key: Key) -> bool:
+    """Снять отказ: данные пришли раньше срока."""
+    return conn.execute("delete from absent where key = ?", (key.text(),)).rowcount > 0
+
+
+def expire_absent(conn: sqlite3.Connection, *, now: float | None = None) -> int:
+    """Убрать протухшие отказы. Вернуть, сколько убрано.
+
+    На решения не влияет — `absent` и так их не отдаёт, — но строка, которую
+    никто не спросит повторно (дата, в которую ткнули один раз), осталась бы в
+    таблице навсегда.
+    """
+    return int(conn.execute("delete from absent where until <= ?", (_moment(now),)).rowcount)
 
 
 def _entry(row: sqlite3.Row) -> Entry:

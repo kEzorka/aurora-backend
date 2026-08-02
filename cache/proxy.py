@@ -15,6 +15,11 @@
 при отладке всё быстро, поэтому предел стоит в `align`, до первого похода
 наружу, а не в середине выкачивания.
 
+Отказ источника кэшируется тоже (docs/CACHE.md §3.3). Реанализ отстаёт от
+сегодняшнего дня на ~5 суток, и дата из этой слепой зоны — не ошибка, а
+нормальный вопрос, на который нет ответа. Без отрицательного кэша один человек,
+листающий календарь на фронтенде, превращает каждое движение в поход наружу.
+
 Порядок на промахе: сначала файл, потом запись в индекс. Обратный порядок
 оставляет после падения строку, указывающую в никуда, — а вытеснение по ней
 позже спишет байты, которых на диске не было. Удаление зеркально: сперва
@@ -32,7 +37,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final, NamedTuple, Protocol
 
-from cache.index import Key, forget, hit, record
+from cache.index import Key, absent, forget, forget_absent, hit, mark_absent, record
 
 #: Расширение файла чанка. Своё, а не `.zarr`/`.grib`: в кэше лежит то, что
 #: отдал origin, и разбирать это — дело того, кто просил, а не хранилища.
@@ -45,6 +50,15 @@ PART_PREFIX: Final = "."
 
 class TooManyChunksError(ValueError):
     """Запрос, который развернулся бы в сотни тысяч обращений к origin."""
+
+
+class NotYetError(LookupError):
+    """Данных в источнике ещё нет: спросили дату из слепой зоны реанализа.
+
+    Отдельно от «источник упал»: реанализ отстаёт на ~5 суток (docs/CACHE.md
+    §3.3), и это не сбой, а нормальное состояние, ответ на которое — сказать
+    пользователю про доступный период, а не повторять поход наружу.
+    """
 
 
 class Grid(NamedTuple):
@@ -91,7 +105,9 @@ class Origin(Protocol):
 
     def source_version(self, chunk: int) -> str: ...
 
-    def fetch(self, variable: str, chunk: int) -> bytes: ...
+    def fetch(self, variable: str, chunk: int) -> bytes:
+        """Отдать чанк. `NotYetError`, когда этих данных в источнике ещё нет."""
+        ...
 
 
 class Served(NamedTuple):
@@ -164,6 +180,11 @@ def serve(
             # Строку убираем, чанк качаем заново — иначе вытеснение потом будет
             # списывать байты, которых нет, и место так и не найдётся.
             forget(conn, key)
+        # Отказ спрашивается после кэша, а не до: данные на диске старше любой
+        # записи о том, что их нет.
+        refused = absent(conn, key, now=now)
+        if refused is not None:
+            raise NotYetError(f"{key.text()}: {refused.reason}")
         cost_ms = _download(conn, origin, key, variable, chunk, path, now=now, clock=clock)
         latency_ms += cost_ms
         paths.append(path)
@@ -197,7 +218,15 @@ def _download(
     part = Path(draft)
     began = clock()
     try:
-        data = origin.fetch(variable, chunk)
+        try:
+            data = origin.fetch(variable, chunk)
+        except NotYetError as refusal:
+            # Отказ запоминается на шесть часов (docs/CACHE.md §3.3). Без этого
+            # один любопытный человек, ткнувший во вчерашнюю дату на фронтенде,
+            # превращает каждый свой скролл в поход наружу — а отвечает на них
+            # очередь CDS, общая на весь сервис.
+            mark_absent(conn, key, reason=str(refusal), now=now)
+            raise
         part.write_bytes(data)
         part.replace(path)
         cost_ms = max(0, int((clock() - began) * 1000))
@@ -213,6 +242,10 @@ def _download(
             cost_ms=cost_ms,
             now=now,
         )
+        # Данные пришли — протухший отказ по этому ключу больше не нужен. Сам
+        # он никого не задержит (`absent` смотрит на срок), но остался бы в
+        # таблице навсегда: повторно про эту дату уже не спросят.
+        forget_absent(conn, key)
     finally:
         part.unlink(missing_ok=True)
     return cost_ms
