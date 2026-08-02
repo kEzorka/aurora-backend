@@ -43,7 +43,13 @@ from typing import Any, Final
 import xarray as xr
 
 from contracts import canon
-from storage.manifest import MANIFEST_NAME, VALIDATION_NAME, mark_published, write_manifest
+from storage.manifest import (
+    MANIFEST_NAME,
+    SKIP_NAME,
+    VALIDATION_NAME,
+    mark_published,
+    write_manifest,
+)
 from storage.write import write_layer
 
 #: Слои, без которых прогон не прогон: карты на 10 суток и часовой слой.
@@ -100,7 +106,7 @@ def publish_run(root: str | Path, run_id: str, *, manifest: Mapping[str, Any]) -
     report = str(manifest.get("validation", VALIDATION_NAME))
     if not (staged / report).is_file():
         raise ValueError(f"{run_id}: нет {report}, срез не проверен")
-    if final.exists():
+    if final.exists() and not _skipped_only(final):
         raise FileExistsError(f"{final}: прогон {run_id} уже опубликован")
     _check_pointer(root / CURRENT_LINK)
     # Уходящий прогон определяется до переезда: указатель ещё смотрит на него,
@@ -112,6 +118,10 @@ def publish_run(root: str | Path, run_id: str, *, manifest: Mapping[str, Any]) -
 
     write_manifest(staged / MANIFEST_NAME, manifest)
     final.parent.mkdir(parents=True, exist_ok=True)
+    if final.exists():
+        # Дошли сюда только отметкой о пропуске: `os.replace` на непустой
+        # каталог не встанет, а данных под ней нет — сносится одна строка JSON.
+        shutil.rmtree(final)
     os.replace(staged, final)
 
     _derive(final, POINTS_LAYER)
@@ -123,6 +133,21 @@ def publish_run(root: str | Path, run_id: str, *, manifest: Mapping[str, Any]) -
     if reduced is not None:
         _point(root / PREVIOUS_LINK, reduced)
     return final
+
+
+def _skipped_only(run: Path) -> bool:
+    """Каталог прогона, в котором лежит одна отметка о пропуске.
+
+    Такой каталог занят, но пуст по существу: слоёв в нём нет, читателю он
+    ничего не обещал. Опоздавший прогон за тот же срок обязан иметь право
+    состояться — иначе отметка о пропуске становится приговором и сервис
+    молчит до следующего срока по своей же вине (docs/PIPELINE.md §3.5).
+
+    Прогон с манифестом сюда не попадает ни в каком виде: `published: false`
+    означает оборванную публикацию, под ним лежат слои, и затирать их
+    переездом нельзя.
+    """
+    return run.is_dir() and {item.name for item in run.iterdir()} <= {SKIP_NAME}
 
 
 def _derive(run: Path, layer: str) -> Path:

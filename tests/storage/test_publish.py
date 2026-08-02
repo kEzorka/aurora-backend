@@ -18,11 +18,20 @@ import zarr
 
 from contracts import canon
 from storage import publish
-from storage.manifest import Input, Model, build_manifest, read_manifest
+from storage.manifest import (
+    SKIP_NAME,
+    Input,
+    Model,
+    build_manifest,
+    build_skip,
+    read_manifest,
+    write_skip,
+)
 from storage.publish import (
     current_run,
     previous_run,
     publish_run,
+    run_path,
     stage_path,
 )
 from storage.write import write_layer
@@ -232,6 +241,36 @@ def test_republishing_the_same_run_id_is_refused(tmp_path: Path) -> None:
     _stage(tmp_path, "2026-08-01T00Z")
     with pytest.raises(FileExistsError, match="2026-08-01T00Z"):
         publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+
+
+def test_a_skipped_run_can_still_arrive_late(tmp_path: Path) -> None:
+    """Отметка о пропуске занимает каталог прогона, но данных под ней нет.
+    Считай её приговором — и опоздавший прогон за тот же срок не состоится
+    никогда, то есть сервис промолчит до следующего срока по своей же вине.
+
+    Прогон с манифестом — другое дело: под ним лежат слои, и он остаётся
+    защищён предыдущим тестом.
+    """
+    mark = run_path(tmp_path, "2026-08-01T00Z") / SKIP_NAME
+    write_skip(
+        mark,
+        build_skip(
+            "forecast/2026-08-01T00Z",
+            init_time="2026-08-01T00:00:00Z",
+            reason="no_input",
+            waited_for=["ifs/0p25/oper"],
+            deadline="2026-08-01T09:30:00Z",
+            attempts=5,
+        ),
+    )
+
+    _stage(tmp_path, "2026-08-01T00Z")
+    final = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+
+    assert current_run(tmp_path) == final
+    # Отметка снята: прогон состоялся, и «пропущен» про него больше не правда.
+    assert not mark.exists()
+    assert read_manifest(final / "manifest.json")["published"] is True
 
 
 def test_second_publication_moves_current_and_fills_previous(tmp_path: Path) -> None:
