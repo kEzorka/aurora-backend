@@ -16,6 +16,7 @@ import pytest
 import xarray as xr
 
 from contracts import canon
+from storage import publish
 from storage.manifest import Input, Model, build_manifest, read_manifest
 from storage.publish import (
     current_run,
@@ -133,6 +134,46 @@ def test_a_failed_publication_leaves_the_pointer_where_it_was(tmp_path: Path) ->
     assert current_run(tmp_path) == first
 
 
+def test_a_run_that_moved_but_was_not_pointed_at_stays_invisible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Настоящее окно приёмки 2.3: прогон уже переехал в `runs/`, лежит целиком
+    и с поднятым `published`, — но пока указатель не переставлен, читатель
+    обязан видеть прошлый прогон, а не новый."""
+    _stage(tmp_path, "2026-08-01T00Z", value=280.0)
+    first = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+
+    def _die(link: Path, target: Path) -> None:
+        raise OSError("диск кончился на перестановке указателя")
+
+    monkeypatch.setattr(publish, "_point", _die)
+    _stage(tmp_path, "2026-08-01T12Z", value=290.0)
+    with pytest.raises(OSError, match="указател"):
+        publish_run(tmp_path, "2026-08-01T12Z", manifest=_manifest("2026-08-01T12Z"))
+
+    second = tmp_path / "runs" / "2026-08-01T12Z"
+    assert read_manifest(second / "manifest.json")["published"] is True
+    assert current_run(tmp_path) == first
+    np.testing.assert_allclose(
+        xr.open_zarr(tmp_path / "forecast" / "current" / "coarse")["2t"].values, 280.0
+    )
+
+
+def test_an_interrupted_reduction_is_not_taken_for_a_finished_one(tmp_path: Path) -> None:
+    """Свёртка прошлого прогона пишется минутами внутрь того каталога, который
+    читатель видит. Оборванная, она не должна пережить публикацию под именем
+    `previous`: следующий прогон отдал бы её как готовую."""
+    _stage(tmp_path, "2026-08-01T00Z", value=280.0)
+    first = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+    (first / "previous.tmp" / "2t").mkdir(parents=True)
+
+    _stage(tmp_path, "2026-08-01T12Z", value=290.0)
+    publish_run(tmp_path, "2026-08-01T12Z", manifest=_manifest("2026-08-01T12Z"))
+
+    assert not (first / "previous.tmp").exists()
+    np.testing.assert_allclose(xr.open_zarr(tmp_path / "forecast" / "previous")["2t"].values, 280.0)
+
+
 def test_publication_without_a_validation_report_is_refused(tmp_path: Path) -> None:
     """Приёмка 2.4: у артефакта оба файла. Отчёт пишет валидатор до публикации —
     иначе «проверено» означает «никто не смотрел»."""
@@ -199,6 +240,15 @@ def test_a_real_directory_in_place_of_the_pointer_is_refused(tmp_path: Path) -> 
     _stage(tmp_path, "2026-08-01T00Z")
     with pytest.raises(RuntimeError, match="current"):
         publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+
+
+def test_the_first_publication_does_not_care_about_the_previous_pointer(tmp_path: Path) -> None:
+    """Прошлого прогона нет — второй указатель не переставляется, и хлам на его
+    месте к первой публикации отношения не имеет."""
+    (tmp_path / "forecast" / "previous").mkdir(parents=True)
+    _stage(tmp_path, "2026-08-01T00Z")
+    final = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+    assert current_run(tmp_path) == final
 
 
 def test_pointers_are_relative_so_the_store_can_be_moved(tmp_path: Path) -> None:

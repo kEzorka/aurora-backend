@@ -108,11 +108,6 @@ def mark_published(path: str | Path) -> dict[str, Any]:
     return manifest
 
 
-def is_published(path: str | Path) -> bool:
-    path = Path(path)
-    return path.exists() and bool(read_manifest(path).get("published"))
-
-
 def _dump(path: Path, manifest: Mapping[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
