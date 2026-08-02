@@ -47,11 +47,17 @@ LOW_WATER: Final = 0.70
 #: (BACKLOG 3.5), поэтому оно параметр, а не число внутри формулы.
 HALF_LIFE_S: Final = 86_400.0
 
+#: Сколько места отведено кэшу на диске (docs/STORAGE.md §2, строка `cache/*`).
+#: Значение по умолчанию, а не обязательный аргумент: чистку запускает
+#: расписание, и байты, которые дежурный вводит руками раз в полгода, он введёт
+#: неверно — а чистка с заниженной ёмкостью снесёт полкэша молча и штатно.
+CAPACITY_BYTES: Final = 195 * (1 << 30)
+
 
 class Limits(NamedTuple):
     """Сколько места отведено кэшу и когда его чистить."""
 
-    capacity_bytes: int
+    capacity_bytes: int = CAPACITY_BYTES
     high: float = HIGH_WATER
     low: float = LOW_WATER
 
@@ -119,10 +125,15 @@ def sweep(
 
     freed = 0
     removed: list[str] = []
-    for found in doomed(conn, limits=limits, now=now, half_life_s=half_life_s):
+    for found in doomed(conn, limits=limits, now=now, half_life_s=half_life_s, occupied=before):
         freed += _drop(conn, found)
         removed.append(found.key)
-    return Swept(tuple(removed), freed, before, before - freed, target, triggered=True)
+    # `after` перечитывается из индекса, а не считается как `before - freed`.
+    # Разойтись эти два числа могут запросто: `_drop` списывает байты строки, а
+    # файла под ней могло уже не быть — и тогда вычитание отчитается об
+    # освобождённом месте, которого на диске не появилось. Занято ровно
+    # столько, сколько говорит индекс; по нему же решает следующая чистка.
+    return Swept(tuple(removed), freed, before, total_bytes(conn), target, triggered=True)
 
 
 def doomed(
@@ -131,14 +142,20 @@ def doomed(
     limits: Limits,
     now: float,
     half_life_s: float = HALF_LIFE_S,
+    occupied: int | None = None,
 ) -> tuple[Entry, ...]:
     """Кого унесла бы чистка. Тот же отбор, но без удаления.
 
     Нужна ровно для `--dry-run`: команда, сносящая гигабайты, обязана уметь
     сначала показать, что именно, — иначе первый её запуск на боевом диске и
     есть проверка.
+
+    `occupied` передаёт `sweep`, чтобы отбор шёл от того же числа, по которому
+    чистка решила запуститься: индекс пишут во время чистки (прокси кладёт
+    чанки, WAL это и разрешает), и второе чтение занятого дало бы отбор под
+    другое заполнение, чем то, что попадёт в отчёт.
     """
-    before = total_bytes(conn)
+    before = total_bytes(conn) if occupied is None else occupied
     if before <= limits.start_at():
         return ()
 
@@ -150,12 +167,12 @@ def doomed(
     candidates.sort(key=lambda found: score(found, now=now, half_life_s=half_life_s))
 
     chosen: list[Entry] = []
-    occupied = before
+    left = before
     for found in candidates:
-        if occupied <= target:
+        if left <= target:
             break
         chosen.append(found)
-        occupied -= found.bytes
+        left -= found.bytes
     return tuple(chosen)
 
 
@@ -171,7 +188,7 @@ def _drop(conn: sqlite3.Connection, entry: Entry) -> int:
     return entry.bytes
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, now: float | None = None) -> int:
     """`python -m cache.evict <индекс> --capacity N` — чистка по расписанию.
 
     Отдельной командой, а не проверкой внутри `serve`: чистка фоновая
@@ -181,6 +198,11 @@ def main(argv: list[str] | None = None) -> int:
 
     Код возврата ненулевой, когда до нижней ватермарки не дочистили: остаток
     запиннён, и кэшу отвели меньше места, чем занимает несменяемое.
+
+    `now` подставляется тестами. Без него оценка бралась бы от настоящих часов,
+    и проверка порядка вытеснения проверяла бы календарь: строки с давностью,
+    заданной от круглой даты, при переходе через неё сравняются в оценке и
+    порядок выберет `entries`, а не `score`.
     """
     parser = argparse.ArgumentParser(prog="cache.evict")
     parser.add_argument(
@@ -190,7 +212,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="файл индекса SQLite; по умолчанию — $AURORA_ROOT/cache/index.sqlite",
     )
-    parser.add_argument("--capacity", type=int, required=True, help="ёмкость кэша в байтах")
+    parser.add_argument(
+        "--capacity",
+        type=int,
+        default=CAPACITY_BYTES,
+        help=f"ёмкость кэша в байтах; по умолчанию {CAPACITY_BYTES} (docs/STORAGE.md §2)",
+    )
     parser.add_argument("--high", type=float, default=HIGH_WATER, help="порог запуска, доля")
     parser.add_argument("--low", type=float, default=LOW_WATER, help="порог остановки, доля")
     parser.add_argument(
@@ -199,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     limits = Limits(capacity_bytes=args.capacity, high=args.high, low=args.low)
-    now = time.time()
+    moment = time.time() if now is None else now
     path = args.index if args.index is not None else default_index()
     if not Path(path).exists():
         # Не создавать: `open_index` разложил бы пустую схему по неверному пути,
@@ -210,11 +237,11 @@ def main(argv: list[str] | None = None) -> int:
     conn = open_index(path)
     try:
         if args.dry_run:
-            for found in doomed(conn, limits=limits, now=now):
+            for found in doomed(conn, limits=limits, now=moment):
                 print(f"снесла бы {found.key} ({found.bytes} байт)")
             return 0
 
-        swept = sweep(conn, limits=limits, now=now)
+        swept = sweep(conn, limits=limits, now=moment)
         for key in swept.removed:
             print(f"снесено {key}")
         print(f"занято {swept.after} из {limits.capacity_bytes} байт, освобождено {swept.freed}")

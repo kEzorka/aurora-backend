@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from cache.evict import HALF_LIFE_S, Limits, key_of, main, score, sweep
+from cache.evict import CAPACITY_BYTES, HALF_LIFE_S, Limits, key_of, main, score, sweep
 from cache.index import Entry, Key, entries, lookup, open_index, pin, record, total_bytes
 
 NOW = 1_800_000_000.0
@@ -67,7 +67,9 @@ def test_cleaning_starts_at_the_high_mark_and_stops_at_the_low_one(
     assert swept.triggered is True
     assert (swept.before, swept.after) == (900, 700)
     assert swept.enough is True
-    assert total_bytes(index) == 700
+    # Занято после чистки — то, что говорит индекс, а не `before - freed`:
+    # по этому же числу решает следующая чистка.
+    assert swept.after == total_bytes(index) == 700
     assert swept.freed == 200 and len(swept.removed) == 2
 
 
@@ -177,6 +179,10 @@ def test_a_file_deleted_by_hand_still_frees_its_row(
 
     assert lookup(index, gone) is None
     assert swept.freed == 300 and total_bytes(index) == 600
+    # Байты списаны со строки, а на диске их не было. Отчитаться об
+    # освобождённом месте, которого не появилось, — значит разойтись с тем
+    # числом, по которому решает следующая чистка.
+    assert swept.after == total_bytes(index)
 
 
 def test_pinning_alone_can_leave_the_cache_over_the_mark(
@@ -221,7 +227,7 @@ def test_the_dry_run_deletes_nothing(
         _put(index, tmp_path, str(number), size=100, age_s=number * 3600)
     index.close()
 
-    code = main([str(tmp_path / "cache.sqlite"), "--capacity", "1000", "--dry-run"])
+    code = main([str(tmp_path / "cache.sqlite"), "--capacity", "1000", "--dry-run"], now=NOW)
 
     assert code == 0
     assert capsys.readouterr().out.count("снесла бы") == 2
@@ -236,7 +242,7 @@ def test_the_command_cleans_and_reports(
         _put(index, tmp_path, str(number), size=100, age_s=number * 3600)
     index.close()
 
-    code = main([str(tmp_path / "cache.sqlite"), "--capacity", "1000"])
+    code = main([str(tmp_path / "cache.sqlite"), "--capacity", "1000"], now=NOW)
 
     assert code == 0
     assert "занято 700 из 1000 байт" in capsys.readouterr().out
@@ -252,7 +258,7 @@ def test_the_command_complains_when_the_pinned_part_does_not_fit(
         _put(index, tmp_path, str(number), size=100, age_s=number * 3600, pinned=True)
     index.close()
 
-    code = main([str(tmp_path / "cache.sqlite"), "--capacity", "1000"])
+    code = main([str(tmp_path / "cache.sqlite"), "--capacity", "1000"], now=NOW)
 
     assert code == 1
     assert "не дочистили" in capsys.readouterr().out
@@ -263,11 +269,27 @@ def test_the_command_does_not_invent_an_index(
 ) -> None:
     """Пустая схема по неверному пути отчиталась бы «чистить нечего» и оставила
     боевой кэш расти дальше."""
-    code = main([str(tmp_path / "нет.sqlite"), "--capacity", "1000"])
+    code = main([str(tmp_path / "нет.sqlite"), "--capacity", "1000"], now=NOW)
 
     assert code == 1
     assert "индекса нет" in capsys.readouterr().out
     assert not (tmp_path / "нет.sqlite").exists()
+
+
+def test_the_capacity_comes_from_the_disk_layout_by_default(
+    index: sqlite3.Connection, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ёмкость взята из раскладки диска (docs/STORAGE.md §2), а не из головы
+    дежурного: команду запускает расписание, и заниженное вручную число снесло
+    бы полкэша молча и штатно."""
+    _put(index, tmp_path, "0", size=100)
+    index.close()
+
+    code = main([str(tmp_path / "cache.sqlite")], now=NOW)
+
+    assert code == 0
+    assert Limits().capacity_bytes == CAPACITY_BYTES == 195 * (1 << 30)
+    assert f"из {CAPACITY_BYTES} байт" in capsys.readouterr().out
 
 
 def test_the_score_does_not_divide_by_a_zero_size(index: sqlite3.Connection) -> None:
