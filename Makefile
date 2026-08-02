@@ -6,7 +6,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
 .DEFAULT_GOAL := help
-.PHONY: help venv setup ingest-analysis ingest-era5 forecast validate test serve cache-report lint format
+.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast validate test serve cache-report lint format
 
 help:
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -24,6 +24,9 @@ ingest-analysis:  ## скачать и нормализовать последн
 
 ingest-era5:  ## дозалив истории: make ingest-era5 FROM=1990-01-01 TO=1990-12-31
 	$(PY) -m pipeline.ingest --kind era5 --from "$(FROM)" --to "$(TO)"
+
+history-monthly:  ## pinned-средние: make history-monthly ROOT=/data/aurora FROM=1940-01-01 TO=2026-04-30T23:00Z
+	$(PY) -m pipeline.monthly --root "$(ROOT)" --from "$(FROM)" --to "$(TO)"
 
 forecast:  ## поставить в очередь инференс: make forecast INIT=2026-08-01T00Z
 	$(PY) -m pipeline.enqueue --init "$(INIT)"

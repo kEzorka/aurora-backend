@@ -25,6 +25,7 @@ from cache import index as cache_index
 from cache import origins as cache_origins
 from cache import proxy as cache_proxy
 from contracts import canon
+from storage import monthly as monthly_store
 from storage import read
 
 #: Корень хранилища. Переменная окружения, а не аргумент запуска: сервис
@@ -325,7 +326,8 @@ def create_app(
     ) -> Response:
         """Карта ERA5 за прошлый срок или сутки (docs/API_CONTRACT.md §2)."""
         _check_units(units)
-        aggregation = _aggregation(agg, grid=True)
+        monthly_run = monthly_store.current(store)
+        aggregation = _aggregation(agg, grid=True, monthly_grid=monthly_run is not None)
         box = _bbox(bbox)
         wanted, names = _history_fields(var)
         if len(wanted) != 1:
@@ -339,7 +341,11 @@ def create_app(
         moment = _moment(time)
         if moment < _history_start():
             raise ApiError(404, "out_of_coverage", f"{time}: история начинается в 1940 году")
-        first, last = history_api.span(moment, aggregation)
+        first, last = (
+            (moment, moment)
+            if aggregation == history_api.MONTHLY
+            else history_api.span(moment, aggregation)
+        )
         full = history_api.grid_shape(box)
         if 0 in full:
             raise ApiError(404, "out_of_coverage", f"bbox {bbox}: узлов сетки нет")
@@ -355,6 +361,45 @@ def create_app(
                 hint=f"используйте stride >= {suggested} или уменьшите bbox",
                 suggested_stride=suggested,
             )
+
+        if aggregation == history_api.MONTHLY:
+            try:
+                monthly = monthly_store.grid_window(
+                    store, names, box, moment, stride=stride, max_points=read.MAX_POINTS
+                )
+            except read.TooManyPointsError as error:
+                raise ApiError(
+                    413,
+                    "too_many_points",
+                    str(error),
+                    requested=error.requested,
+                    limit=error.limit,
+                    hint=f"используйте stride >= {error.suggested_stride} или уменьшите bbox",
+                    suggested_stride=error.suggested_stride,
+                ) from error
+            except LookupError as error:
+                raise ApiError(404, "out_of_coverage", str(error)) from error
+            field = wanted[0]
+            monthly_body: dict[str, Any] = {
+                "query": {"bbox": list(box), "var": var, "time": time, "stride": stride},
+                "source": "era5-final",
+                "agg": aggregation,
+                # Материализованный pinned-слой не обращается к origin. Для
+                # клиента это тот же гарантированный локальный hit.
+                "cache": {"hit": True, "origin_latency_ms": 0},
+                "time": monthly.time,
+                "units": {field.name: field.unit(units)},
+                "grid": {
+                    "lat0": monthly.lat0,
+                    "lon0": monthly.lon0,
+                    "dlat": monthly.dlat,
+                    "dlon": monthly.dlon,
+                    "shape": list(monthly.shape),
+                    "order": "row-major",
+                },
+                "values": field.compact(monthly.values, units),
+            }
+            return _history_answer(request, monthly_body, history_api.SETTLED_TTL_SEC)
 
         try:
             cold = any(
@@ -494,9 +539,9 @@ def _check_units(units: str) -> None:
         raise ApiError(400, "bad_units", f"units: got {units!r}, expected 'si' or 'human'")
 
 
-def _aggregation(agg: str, *, grid: bool = False) -> str:
+def _aggregation(agg: str, *, grid: bool = False, monthly_grid: bool = False) -> str:
     try:
-        return history_api.check_aggregation(agg, grid=grid)
+        return history_api.check_aggregation(agg, grid=grid, monthly_grid=monthly_grid)
     except history_api.UnknownAggregationError as error:
         raise ApiError(400, "bad_aggregation", str(error)) from error
 

@@ -111,7 +111,7 @@ SOURCE_NAMES: Final[Mapping[str, str]] = MappingProxyType(
 SCALES: Final[Mapping[str, float]] = MappingProxyType({})
 
 
-def open_archive(source: Any = ARCO_URL) -> xr.Dataset:
+def open_archive(source: Any = ARCO_URL, *, chunks: Any = None) -> xr.Dataset:
     """Открыть архив, не читая данных.
 
     `chunks=None` — не «без ленивости», а «не перекладывать чанки в dask»:
@@ -128,8 +128,57 @@ def open_archive(source: Any = ARCO_URL) -> xr.Dataset:
     (`cache.origins.REFRESH_AFTER`). Тестами это не видно: локальный каталог
     отвечает мгновенно независимо от числа запросов.
     """
-    archive: xr.Dataset = xr.open_zarr(source, chunks=None, consolidated=None)
+    archive: xr.Dataset = xr.open_zarr(source, chunks=chunks, consolidated=None)
     return archive
+
+
+def read_period(
+    archive: xr.Dataset,
+    variables: tuple[str, ...],
+    start: datetime,
+    stop: datetime,
+    *,
+    source_url: str = ARCO_URL,
+    retrieved_at: str | None = None,
+    now: datetime | None = None,
+) -> xr.Dataset:
+    """Ленивый канонический период для построения месячного слоя (2.5).
+
+    В отличие от `read_slice`, здесь `.load()` намеренно нет: десятки лет
+    четырёх глобальных полей не помещаются в память. Вычисление остаётся dask-
+    графом до записи месячных средних, а переменные и период отбираются до него.
+    """
+    if stop < start:
+        raise AdapterError("date", f"{start.isoformat()}..{stop.isoformat()}", "start <= stop")
+    source_names: dict[str, str] = {}
+    for variable in variables:
+        name = SOURCE_NAMES.get(variable)
+        if name is None:
+            raise AdapterError("variable", variable, sorted(SOURCE_NAMES))
+        if name not in archive.data_vars:
+            raise AdapterError("data_vars", name, sorted(str(v) for v in archive.data_vars))
+        source_names[name] = variable
+    first, last = covers(archive)
+    if stop > last:
+        raise NotYetInSourceError(f"{stop.isoformat()} новее архива ERA5 (по {last.isoformat()})")
+    if start < first:
+        raise AdapterError("time", start.isoformat(), f"с {first.isoformat()}")
+
+    begin = np.datetime64(start.astimezone(UTC).replace(tzinfo=None), "ns")
+    end = np.datetime64(stop.astimezone(UTC).replace(tzinfo=None), "ns")
+    sliced = archive[list(source_names)].sel(time=slice(begin, end))
+    # Общий канонизатор различает начало прогона `time` и срок `valid_time`.
+    # У реанализа они равны; `swap_dims` делает срок настоящей осью, чтобы
+    # многосроковый набор не превратился в одну координату длины N.
+    sliced = sliced.assign_coords(valid_time=sliced["time"]).swap_dims({"time": "valid_time"})
+    provenance = Provenance(
+        source=source_version(stop, now=now),
+        source_url=f"{source_url}#{','.join(source_names)}@{start.isoformat()}..{stop.isoformat()}",
+        retrieved_at=retrieved_at or datetime.now(UTC).isoformat(),
+        adapter_version=ADAPTER_VERSION,
+        kind="analysis",
+    )
+    return to_canonical(sliced, renames=source_names, scales=SCALES, provenance=provenance)
 
 
 def covers(archive: xr.Dataset) -> tuple[datetime, datetime]:

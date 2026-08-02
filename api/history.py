@@ -169,7 +169,7 @@ def _default_root() -> Path:
     return base / "cache"
 
 
-def check_aggregation(agg: str, *, grid: bool = False) -> str:
+def check_aggregation(agg: str, *, grid: bool = False, monthly_grid: bool = False) -> str:
     """Проверить `agg` и вернуть его же.
 
     Месячные средние по карте — отдельный случай: слоя 2.5 нет, и посчитать их
@@ -177,7 +177,7 @@ def check_aggregation(agg: str, *, grid: bool = False) -> str:
     """
     if agg not in AGGREGATIONS:
         raise UnknownAggregationError(f"agg: получено {agg!r}, ожидалось одно из {AGGREGATIONS}")
-    if grid and agg == MONTHLY:
+    if grid and agg == MONTHLY and not monthly_grid:
         raise UnknownAggregationError(
             "agg=monthly для карты не поддерживается: месячных средних нет (BACKLOG 2.5)"
         )

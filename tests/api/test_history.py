@@ -14,12 +14,16 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
+import xarray as xr
 from fastapi.testclient import TestClient
 
 from api.history import COLD_LIMIT, History
 from cache.origins import CDS_GRID, ArcoOrigin, CdsOrigin
 from cache.proxy import Grid
+from storage.monthly import MONTHLY_VARS
+from storage.monthly import publish as publish_monthly
 from tests.fixtures.arco import STEPS, build
 from tests.fixtures.cds import MOSCOW, Service
 
@@ -172,6 +176,45 @@ def test_a_grid_uses_the_same_compact_geometry_as_the_forecast(
     }
     assert len(body["values"]) == 15
     assert body["cache"]["hit"] is False
+
+
+def test_a_published_monthly_map_is_served_without_the_origin(tmp_path: Path) -> None:
+    times = np.array(["2020-01-01", "2020-02-01"], dtype="datetime64[ns]")
+    lat = np.array([1.0, 0.0, -1.0])
+    lon = np.array([-1.0, 0.0, 1.0, 2.0])
+    ds = xr.Dataset(
+        {
+            name: (
+                ("time", "lat", "lon"),
+                np.full((2, 3, 4), index + 1.0, dtype=np.float32),
+            )
+            for index, name in enumerate(MONTHLY_VARS)
+        },
+        coords={"time": times, "lat": lat, "lon": lon},
+    )
+    publish_monthly(ds, tmp_path, version="2020-02", require_canonical_grid=False)
+    service = Service()
+
+    response = _client(tmp_path, _state(tmp_path, service)).get(
+        GRID,
+        params={
+            "bbox": "-1,-1,1,2",
+            "var": "t2m",
+            "time": "2020-02-15T12:00:00Z",
+            "agg": "monthly",
+            "units": "si",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "era5-final"
+    assert body["agg"] == "monthly"
+    assert body["time"] == "2020-02-01T00:00:00Z"
+    assert body["cache"] == {"hit": True, "origin_latency_ms": 0}
+    assert body["grid"]["shape"] == [3, 4]
+    assert body["values"] == [1.0] * 12
+    assert service.requests == []
 
 
 @pytest.mark.parametrize(

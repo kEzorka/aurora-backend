@@ -26,6 +26,7 @@ from adapters.era5_arco import (
     RENAMES,
     covers,
     open_archive,
+    read_period,
     read_slice,
     source_version,
 )
@@ -66,6 +67,18 @@ def test_a_slice_comes_out_canonical(surface: Path) -> None:
     assert np.array_equal(got["lon"].values, canon.LON)
     assert got["time"].values[0] == np.datetime64(STEPS[1].replace(tzinfo=None), "ns")
     assert got.attrs["grid"] == canon.GRID_NAME
+
+
+def test_a_period_stays_lazy_for_the_monthly_builder(surface: Path) -> None:
+    archive = open_archive(surface, chunks={})
+
+    got = read_period(archive, ("2t",), STEPS[0], STEPS[-1], now=NOW)
+
+    assert got["2t"].dims == ("time", "lat", "lon")
+    assert got["2t"].chunks is not None
+    assert got.sizes["time"] == len(STEPS)
+    assert got["time"].values[0] == np.datetime64("2020-06-01T00", "ns")
+    assert got["2t"].isel(time=2, lat=0, lon=720).compute().item() == pytest.approx(2000.0)
 
 
 def test_the_longitude_moves_with_its_data(surface: Path) -> None:
