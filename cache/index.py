@@ -30,6 +30,7 @@ from __future__ import annotations
 import sqlite3
 import time
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Final, NamedTuple
 
 #: Откуда взят чанк (docs/CACHE.md §4). Список закрытый и проверяется базой:
@@ -129,7 +130,7 @@ class Entry(NamedTuple):
     created_at: float
 
 
-def open_index(path: str) -> sqlite3.Connection:
+def open_index(path: str | Path) -> sqlite3.Connection:
     """Открыть индекс, включить WAL и убедиться, что он включился.
 
     `isolation_level=None` — не мелочь: драйвер иначе сам открывает транзакцию
@@ -140,7 +141,7 @@ def open_index(path: str) -> sqlite3.Connection:
     `path` — файл, не `:memory:`: WAL в памяти невозможен, а индекс, живущий
     до перезапуска, оставит после себя файлы-сироты на диске (docs/CACHE.md §4).
     """
-    conn = sqlite3.connect(path, isolation_level=None, timeout=BUSY_TIMEOUT_MS / 1000)
+    conn = sqlite3.connect(str(path), isolation_level=None, timeout=BUSY_TIMEOUT_MS / 1000)
     conn.row_factory = sqlite3.Row
     mode = str(conn.execute("pragma journal_mode=wal").fetchone()[0]).lower()
     if mode != "wal":
@@ -151,6 +152,9 @@ def open_index(path: str) -> sqlite3.Connection:
     # отказе питания, и потерянные — это запись о чанке, который лежит на
     # диске. Худшее последствие — лишний поход в origin.
     conn.execute("pragma synchronous=normal")
+    # `executescript` перед выполнением сам делает `commit`. Здесь это безвредно
+    # — транзакции ещё нет, — но вызывать его внутри своей транзакции нельзя:
+    # она молча закроется на середине.
     conn.executescript(_SCHEMA)
     return conn
 
