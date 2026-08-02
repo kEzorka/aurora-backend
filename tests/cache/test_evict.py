@@ -258,6 +258,18 @@ def test_the_command_complains_when_the_pinned_part_does_not_fit(
     assert "не дочистили" in capsys.readouterr().out
 
 
+def test_the_command_does_not_invent_an_index(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Пустая схема по неверному пути отчиталась бы «чистить нечего» и оставила
+    боевой кэш расти дальше."""
+    code = main([str(tmp_path / "нет.sqlite"), "--capacity", "1000"])
+
+    assert code == 1
+    assert "индекса нет" in capsys.readouterr().out
+    assert not (tmp_path / "нет.sqlite").exists()
+
+
 def test_the_score_does_not_divide_by_a_zero_size(index: sqlite3.Connection) -> None:
     """Пустой файл в кэше означает сломанный origin. Делить на него нельзя, а
     вытеснять — наравне с прочими."""

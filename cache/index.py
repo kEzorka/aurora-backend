@@ -27,6 +27,7 @@ WAL держит рядом `-wal` и `-shm` и по сетевой файлов
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from collections.abc import Iterator
@@ -46,6 +47,13 @@ BUSY_TIMEOUT_MS: Final = 5_000
 #: Разделитель частей ключа. Ни одна часть его содержать не вправе — иначе два
 #: разных чанка сложатся в один ключ и кэш начнёт отдавать чужие данные.
 SEPARATOR: Final = "/"
+
+#: Где лежит корень данных и как называется индекс. Дежурный запускает отчёт и
+#: чистку без аргументов, и промах мимо боевого индекса выглядел бы как пустой
+#: кэш, а не как ошибка: на новый файл `open_index` молча создаёт схему.
+ROOT_ENV: Final = "AURORA_ROOT"
+DEFAULT_ROOT: Final = "/data/aurora"
+INDEX_NAME: Final = "cache/index.sqlite"
 
 #: Список origin для `check` — собран, а не взят из `repr` кортежа: `repr`
 #: пишет висячую запятую, когда значение остаётся одно, и схема перестаёт
@@ -128,6 +136,16 @@ class Entry(NamedTuple):
     cost_ms: int
     pinned: bool
     created_at: float
+
+
+def default_index() -> Path:
+    """Боевой индекс: `$AURORA_ROOT/cache/index.sqlite`.
+
+    Каталог не создаётся: инструмент дежурного, разложивший пустой кэш по
+    случайному пути из-за незаданной переменной, отчитается «занято 0 байт» и
+    будет выглядеть исправным.
+    """
+    return Path(os.environ.get(ROOT_ENV, DEFAULT_ROOT)).expanduser() / INDEX_NAME
 
 
 def open_index(path: str | Path) -> sqlite3.Connection:

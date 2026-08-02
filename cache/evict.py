@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 from typing import Final, NamedTuple
 
-from cache.index import Entry, Key, entries, forget, open_index, total_bytes
+from cache.index import Entry, Key, default_index, entries, forget, open_index, total_bytes
 
 #: Порог запуска чистки — доля занятого места (docs/CACHE.md §2).
 HIGH_WATER: Final = 0.85
@@ -183,7 +183,13 @@ def main(argv: list[str] | None = None) -> int:
     запиннён, и кэшу отвели меньше места, чем занимает несменяемое.
     """
     parser = argparse.ArgumentParser(prog="cache.evict")
-    parser.add_argument("index", type=Path, help="файл индекса SQLite")
+    parser.add_argument(
+        "index",
+        type=Path,
+        nargs="?",
+        default=None,
+        help="файл индекса SQLite; по умолчанию — $AURORA_ROOT/cache/index.sqlite",
+    )
     parser.add_argument("--capacity", type=int, required=True, help="ёмкость кэша в байтах")
     parser.add_argument("--high", type=float, default=HIGH_WATER, help="порог запуска, доля")
     parser.add_argument("--low", type=float, default=LOW_WATER, help="порог остановки, доля")
@@ -194,7 +200,14 @@ def main(argv: list[str] | None = None) -> int:
 
     limits = Limits(capacity_bytes=args.capacity, high=args.high, low=args.low)
     now = time.time()
-    conn = open_index(args.index)
+    path = args.index if args.index is not None else default_index()
+    if not Path(path).exists():
+        # Не создавать: `open_index` разложил бы пустую схему по неверному пути,
+        # отчитался «чистить нечего» и оставил боевой кэш расти дальше.
+        print(f"индекса нет: {path}")
+        return 1
+
+    conn = open_index(path)
     try:
         if args.dry_run:
             for found in doomed(conn, limits=limits, now=now):
