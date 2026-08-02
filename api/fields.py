@@ -55,6 +55,25 @@ class Field(NamedTuple):
             combined = combined * self.scale + self.offset
         return [None if np.isnan(value) else float(value) for value in combined]
 
+    def digits(self, units: str) -> int:
+        """Сколько знаков после запятой имеет смысл в этих единицах."""
+        return _DIGITS.get(self.unit(units), DEFAULT_DIGITS)
+
+    def compact(
+        self, source: Mapping[str, Sequence[float | None]], units: str
+    ) -> list[float | None]:
+        """То же, что `values`, но округлённое под компактный формат сетки.
+
+        `21.340000000000003` — это 18 байт на точку вместо пяти, то есть 290 КБ
+        вместо 90 на окно в 16 000 точек (docs/API_CONTRACT.md §1). Знаки
+        отсчитываются от единицы, а не от поля: 0.1 °C и 0.1 гПа осмысленны,
+        0.1 Па — нет, и в СИ то же поле округляется иначе.
+        """
+        digits = self.digits(units)
+        return [
+            None if value is None else round(value, digits) for value in self.values(source, units)
+        ]
+
 
 def _speed(arrays: Sequence[np.ndarray]) -> np.ndarray:
     speed: np.ndarray = np.hypot(arrays[0], arrays[1])
@@ -85,6 +104,26 @@ _HUMAN: Final[Mapping[str, tuple[str, float, float]]] = MappingProxyType(
         "ci": ("%", 100.0, 0.0),
     }
 )
+
+#: Знаков после запятой в компактном формате сетки. Свойство единицы, а не
+#: поля: 0.1 °C — это уже вдвое мельче ошибки модели, а 0.1 Па — шум, который
+#: стоит трёх лишних байт на каждой из 16 000 точек.
+_DIGITS: Final[Mapping[str, int]] = MappingProxyType(
+    {
+        "degC": 1,
+        "K": 1,
+        "hPa": 1,
+        "Pa": 0,
+        "m/s": 1,
+        "m s-1": 1,
+        "mm": 2,
+        "%": 1,
+    }
+)
+
+#: Для всего прочего — доли и метры водного эквивалента, где значащее начинается
+#: с третьего знака.
+DEFAULT_DIGITS: Final = 3
 
 #: Публичные имена, которых в каноне нет.
 _ALIASES: Final[Mapping[str, str]] = MappingProxyType({"t2m": "2t", "d2m": "2d"})

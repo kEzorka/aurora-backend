@@ -64,6 +64,27 @@ class Point(NamedTuple):
     values: Mapping[str, tuple[float | None, ...]]
 
 
+class Grid(NamedTuple):
+    """Окно карты на один срок: геометрия и значения строка за строкой.
+
+    Координаты не перечисляются, а описываются началом и шагом: 16 000 точек
+    с парой `lat`/`lon` у каждой стоят 45 байт на точку вместо 5
+    (docs/API_CONTRACT.md §1). Поэтому `lat0`/`lon0` — первый **выбранный**
+    узел, а не угол `bbox`, а `dlat`/`dlon` учитывают прореживание: клиент
+    восстанавливает координату как `lat0 + dlat * i`, и ошибка здесь тихо
+    сдвинет всю карту.
+    """
+
+    lat0: float
+    lon0: float
+    dlat: float
+    dlon: float
+    shape: tuple[int, int]
+    init_time: str
+    time: str
+    values: Mapping[str, tuple[float | None, ...]]
+
+
 def published_run(root: str | Path) -> Path | None:
     """Прогон, который читателю обещан, или `None`.
 
@@ -167,6 +188,71 @@ def point_series(
         )
 
 
+def grid_window(
+    layer_dir: str | Path,
+    names: Sequence[str],
+    bbox: tuple[float, float, float, float],
+    moment: str,
+    *,
+    stride: int = 1,
+) -> Grid:
+    """Окно карты на один срок (docs/API_CONTRACT.md §2).
+
+    `bbox` — это `(south, west, north, east)` в том порядке, в каком его
+    принимает контракт. Ось широты в каноне убывает (90 → -90), поэтому срез
+    по ней идёт от севера к югу: `slice(south, north)` вернул бы пустоту, а не
+    ошибку, и пользователь получил бы `404` на честный запрос.
+
+    Срок выбирается ближайшим — контракт это обещает, — но только внутри
+    покрытия: без проверки `sel(method="nearest")` молча отдал бы конец
+    горизонта на запрос про следующий месяц.
+    """
+    south, west, north, east = bbox
+    if stride < 1:
+        raise UnsupportedError(f"stride: got {stride}, expected >= 1")
+    if south >= north or west >= east:
+        raise UnsupportedError(
+            f"bbox: ожидается south,west,north,east, получено {south},{west},{north},{east}"
+        )
+    with xr.open_zarr(layer_dir, chunks=None) as ds:
+        missing = [name for name in names if name not in ds.data_vars]
+        if missing:
+            raise UnsupportedError(f"var: в слое нет: {', '.join(missing)}")
+        on_levels = [name for name in names if "level" in ds[name].dims]
+        if on_levels:
+            raise UnsupportedError(f"var: поля на уровнях давления: {', '.join(on_levels)}")
+
+        stamp = _stamp(moment)
+        times = ds["time"].values
+        # Полшага в обе стороны: «ближайший срок» для 04:00 это 06:00, а для
+        # следующего месяца — не конец горизонта, а отказ.
+        half = (times[1] - times[0]) // 2 if times.size > 1 else np.timedelta64(3, "h")
+        if stamp is None or stamp < times[0] - half or stamp > times[-1] + half:
+            raise OutOfCoverageError(f"{moment}: вне покрытия {_iso(times[0])}..{_iso(times[-1])}")
+        window = ds[list(names)].sel(lat=slice(north, south), lon=slice(west, east))
+        if stride > 1:
+            window = window.isel(lat=slice(None, None, stride), lon=slice(None, None, stride))
+        ny, nx = int(window.sizes["lat"]), int(window.sizes["lon"])
+        if ny == 0 or nx == 0:
+            raise OutOfCoverageError(f"bbox {south},{west},{north},{east}: узлов сетки нет")
+
+        at = window.sel(time=stamp, method="nearest").transpose("lat", "lon").load()
+        # Шаг берётся с полной оси, а не с выборки: у окна в одну строку
+        # разности нет, а шаг у неё всё равно есть.
+        step_lat = float(ds["lat"].values[1] - ds["lat"].values[0]) * stride
+        step_lon = float(ds["lon"].values[1] - ds["lon"].values[0]) * stride
+        return Grid(
+            lat0=_coord(at["lat"].values[0]),
+            lon0=_coord(at["lon"].values[0]),
+            dlat=_coord(step_lat),
+            dlon=_coord(step_lon),
+            shape=(ny, nx),
+            init_time=str(ds.attrs.get("init_time", _iso(times[0]))),
+            time=_iso(at["time"].values),
+            values={name: _jsonable(at[name].values.ravel()) for name in names},
+        )
+
+
 def layer_span(layer_dir: str | Path) -> tuple[str, str]:
     """Первый и последний срок слоя — для покрытия и для проверок горизонта."""
     with xr.open_zarr(layer_dir, chunks=None) as ds:
@@ -182,6 +268,12 @@ def _stamp(moment: str | None) -> np.datetime64 | None:
         return np.datetime64(moment.rstrip("Z"), "ns")
     except ValueError as error:
         raise UnsupportedError(f"time: got {moment!r}, expected ISO 8601") from error
+
+
+def _coord(value: float | np.floating) -> float:
+    """Координата в ответ. Округление до шести знаков — против шума `float32`:
+    `55.75000762939453` в геометрии сетки выглядит как другая сетка."""
+    return round(float(value), 6)
 
 
 def _iso(moment: np.datetime64) -> str:

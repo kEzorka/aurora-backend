@@ -133,14 +133,94 @@ def create_app(root: str | Path | None = None) -> FastAPI:
             content=body, headers={"Cache-Control": _cache_control(point.init_time)}
         )
 
+    @app.get("/v1/forecast/grid")
+    def forecast_grid(
+        bbox: str,
+        var: str,
+        time: str,
+        stride: int = 1,
+        units: str = "human",
+    ) -> JSONResponse:
+        """Карта переменной на срок в компактном формате (docs/API_CONTRACT.md §1, §2)."""
+        if units not in ("si", "human"):
+            raise ApiError(400, "bad_units", f"units: got {units!r}, expected 'si' or 'human'")
+        box = _bbox(bbox)
+        try:
+            wanted = fields.resolve(var)
+        except fields.UnknownFieldError as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+        # Карта — это одна переменная за запрос (docs/API_CONTRACT.md §3):
+        # `values` плоский, и второй переменной в нём просто некуда лечь.
+        if len(wanted) != 1:
+            raise ApiError(
+                400,
+                "too_many_vars",
+                f"var: одна переменная на запрос сетки, получено {len(wanted)}",
+            )
+        field = wanted[0]
+        # Слой всегда шестичасовой: часовой лежит рядами, и карту из него никто
+        # не читает — `time` округляется к ближайшему сроку (docs/STORAGE.md §3).
+        try:
+            layer = read.choose_layer(canon.STEP_HOURS, field.inputs)
+        except read.UnsupportedError as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+
+        layer_dir = _must_exist(_run(store) / layer, layer)
+        try:
+            grid = read.grid_window(layer_dir, field.inputs, box, time, stride=stride)
+        except read.OutOfCoverageError as error:
+            raise ApiError(404, "out_of_coverage", str(error)) from error
+        except read.UnsupportedError as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+
+        body = {
+            "query": {"bbox": list(box), "var": var, "time": time, "stride": stride},
+            "source": FORECAST_SOURCE,
+            "init_time": grid.init_time,
+            # Отданный срок, а не запрошенный: округление к ближайшему шагу
+            # пользователь обязан видеть — как и узел сетки в полосе точки.
+            "time": grid.time,
+            "units": {field.name: field.unit(units)},
+            "grid": {
+                "lat0": grid.lat0,
+                "lon0": grid.lon0,
+                "dlat": grid.dlat,
+                "dlon": grid.dlon,
+                "shape": list(grid.shape),
+                "order": "row-major",
+            },
+            "values": field.compact(grid.values, units),
+        }
+        return JSONResponse(content=body, headers={"Cache-Control": _cache_control(grid.init_time)})
+
     return app
 
 
-def _layer_dir(store: Path, layer: str, names: Sequence[str]) -> Path:
-    """Каталог, из которого читается ряд в точке.
+def _bbox(text: str) -> tuple[float, float, float, float]:
+    """`south,west,north,east` из запроса в четыре числа.
 
-    Какая раскладка отвечает — решает хранилище (`read.point_layer`): здесь
-    известно, что спросили, но не то, что для этого лежит на диске.
+    Порядок именно такой (docs/API_CONTRACT.md §2), и перепутанный `bbox` —
+    это `400`, а не пустая карта: `55.7,37.5,55.8,37.7` и `37.5,55.7,37.7,55.8`
+    выглядят одинаково правдоподобно, но второй лежит в океане.
+    """
+    parts = [chunk.strip() for chunk in text.split(",")]
+    if len(parts) != 4:
+        raise ApiError(400, "bad_bbox", f"bbox: ожидается south,west,north,east, получено {text!r}")
+    try:
+        south, west, north, east = (float(part) for part in parts)
+    except ValueError as error:
+        raise ApiError(400, "bad_bbox", f"bbox: не число в {text!r}") from error
+    if not (-90.0 <= south <= 90.0 and -90.0 <= north <= 90.0):
+        raise ApiError(400, "bad_bbox", f"bbox: широта вне глобуса: {south}, {north}")
+    if not (-180.0 <= west <= 180.0 and -180.0 <= east <= 180.0):
+        raise ApiError(400, "bad_bbox", f"bbox: долгота вне глобуса: {west}, {east}")
+    if south >= north or west >= east:
+        raise ApiError(400, "bad_bbox", f"bbox: south < north и west < east, получено {text!r}")
+    return south, west, north, east
+
+
+def _run(store: Path) -> Path:
+    """Опубликованный прогон.
 
     Прогона нет — это `503`, а не `404`: дата пользователя ни при чём, просто
     сервис ещё ничего не посчитал (docs/API_CONTRACT.md §4).
@@ -148,10 +228,23 @@ def _layer_dir(store: Path, layer: str, names: Sequence[str]) -> Path:
     run = read.published_run(store)
     if run is None:
         raise ApiError(503, "no_forecast", "опубликованного прогона нет")
-    path = read.point_layer(run, layer, names)
+    return run
+
+
+def _must_exist(path: Path, layer: str) -> Path:
     if not path.is_dir():
         raise ApiError(503, "no_layer", f"в прогоне нет слоя {layer}")
     return path
+
+
+def _layer_dir(store: Path, layer: str, names: Sequence[str]) -> Path:
+    """Каталог, из которого читается ряд в точке.
+
+    Какая раскладка отвечает — решает хранилище (`read.point_layer`): здесь
+    известно, что спросили, но не то, что для этого лежит на диске. Полоса
+    сетки, наоборот, идёт в слой напрямую: карту отдаёт раскладка карт.
+    """
+    return _must_exist(read.point_layer(_run(store), layer, names), layer)
 
 
 def _check_horizon(layer_dir: Path, step_hours: int, to: str | None) -> None:
