@@ -38,12 +38,20 @@ ARCO_GRID: Final = Grid(
 )
 
 
+#: Как часто переоткрывать архив. Не оптимизация, а срок жизни слепой зоны:
+#: `open_zarr` читает ось времени сразу, и открытый в понедельник архив до
+#: конца работы процесса уверен, что данных за вторник нет. Отказ живёт шесть
+#: часов (`cache.index.NEGATIVE_TTL_S`), после чего прокси спрашивает снова —
+#: и обязан спросить у архива, который знает про новые сроки.
+REFRESH_AFTER: Final = timedelta(hours=1)
+
+
 class ArcoOrigin:
     """ERA5 из публичного бакета — карты за прошлое.
 
-    Архив открывается один раз на объект: `open_zarr` читает описание всех
-    переменных за все восемьдесят лет, и делать это на каждый чанк значит
-    платить за метаданные больше, чем за сами данные.
+    Архив открывается не на каждый чанк: `open_zarr` читает описание всех
+    переменных за все восемьдесят лет, и платить за метаданные больше, чем за
+    данные, — не дело. Но и не один раз навсегда: см. `REFRESH_AFTER`.
     """
 
     # Без `Final`: `cache.proxy.Origin` — Protocol, а он требует изменяемых
@@ -58,12 +66,15 @@ class ArcoOrigin:
         *,
         grid: Grid = ARCO_GRID,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        refresh_after: timedelta = REFRESH_AFTER,
     ) -> None:
         self.version = era5_arco.ADAPTER_VERSION
         self.grid = grid
         self._source = source
         self._clock = clock
+        self._refresh_after = refresh_after
         self._archive: xr.Dataset | None = None
+        self._opened = datetime.min.replace(tzinfo=UTC)
 
     def source_version(self, chunk: int) -> str:
         """`era5t` или `era5-final` — до похода наружу, по номеру чанка.
@@ -86,6 +97,14 @@ class ArcoOrigin:
         return encode(sliced)
 
     def _open(self) -> xr.Dataset:
-        if self._archive is None:
+        """Открытый архив, не старше `REFRESH_AFTER`.
+
+        Переоткрывать на каждый отказ нельзя: человек, листающий календарь
+        вперёд, попадает в слепую зону много раз подряд, и каждое движение
+        стоило бы чтения описания всего архива.
+        """
+        now = self._clock()
+        if self._archive is None or now - self._opened >= self._refresh_after:
             self._archive = era5_arco.open_archive(self._source)
+            self._opened = now
         return self._archive

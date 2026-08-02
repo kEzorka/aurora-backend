@@ -43,3 +43,10 @@ markers = [
     "network: talks to the outside world, never part of `make test`",
     "slow: writes or reads the real 721x1440 grid, seconds rather than milliseconds",
 ]
+filterwarnings = [
+    # Архивы фикстур пишутся без сводного описания, а `adapters.era5_arco`
+    # открывает их с `consolidated=None` — ради боевого бакета, где сводное
+    # описание экономит сотни запросов. Предупреждение про медленное открытие
+    # к локальному каталогу отношения не имеет.
+    "ignore:Failed to open Zarr store with consolidated metadata:RuntimeWarning",
+]

@@ -20,7 +20,7 @@ import pytest
 from adapters.era5_arco import FINAL, PRELIMINARY
 from cache.chunks import decode, encode
 from cache.index import Key, absent, open_index
-from cache.origins import ARCO_GRID, ArcoOrigin
+from cache.origins import ARCO_GRID, REFRESH_AFTER, ArcoOrigin
 from cache.proxy import NotYetError, serve
 from contracts import canon
 from tests.fixtures.arco import STEPS, build
@@ -94,7 +94,7 @@ def test_a_period_comes_out_chunk_per_hour(
     assert len({path for path in served.paths}) == len(STEPS)
 
 
-def test_the_blind_zone_is_remembered_and_not_asked_twice(
+def test_the_blind_zone_is_remembered(
     archive: Path, index: sqlite3.Connection, tmp_path: Path
 ) -> None:
     """Срок новее архива — не сбой, а слепая зона реанализа. Отказ адаптера
@@ -109,6 +109,29 @@ def test_the_blind_zone_is_remembered_and_not_asked_twice(
 
     refusal = absent(index, _key(origin, "2t", ahead), now=CLOCK)
     assert refusal is not None and "новее архива" in refusal.reason
+
+
+def test_the_archive_is_reopened_and_the_blind_zone_shrinks(tmp_path: Path) -> None:
+    """Реанализ догоняет календарь, и origin обязан это заметить сам.
+
+    `open_zarr` читает ось времени сразу: архив, открытый один раз навсегда, до
+    конца жизни процесса уверен, что данных за вчера нет. Отказ в `absent`
+    живёт шесть часов, прокси спрашивает снова — и получал бы тот же отказ до
+    перезапуска сервиса.
+    """
+    path = build(tmp_path / "grows.zarr", "2m_temperature", times=STEPS[:2])
+    ahead = STEPS[2]
+    moment = [NOW]
+    origin = ArcoOrigin(path, clock=lambda: moment[0])
+
+    with pytest.raises(NotYetError):
+        origin.fetch("2t", ARCO_GRID.holding(ahead))
+
+    build(path, "2m_temperature", times=STEPS)
+    moment[0] = NOW + REFRESH_AFTER
+
+    got = decode(origin.fetch("2t", ARCO_GRID.holding(ahead)))
+    assert got["time"].values[0] == np.datetime64(ahead.replace(tzinfo=None), "ns")
 
 
 def test_the_key_carries_the_preliminary_mark(archive: Path) -> None:

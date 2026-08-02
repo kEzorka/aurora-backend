@@ -121,8 +121,14 @@ def open_archive(source: Any = ARCO_URL) -> xr.Dataset:
     `source` — адрес `gs://` или что угодно, что понимает `xarray.open_zarr`:
     локальный каталог, store. Тесты открывают каталог, боевой код — бакет; путь
     кода при этом один, и проверяется именно он.
+
+    `consolidated=None` — «взять сводное описание, если оно есть». Явное
+    `False` заставляло бы читать описание каждой из ~250 переменных отдельным
+    запросом к бакету, а открывается архив не один раз за жизнь процесса
+    (`cache.origins.REFRESH_AFTER`). Тестами это не видно: локальный каталог
+    отвечает мгновенно независимо от числа запросов.
     """
-    archive: xr.Dataset = xr.open_zarr(source, chunks=None, consolidated=False)
+    archive: xr.Dataset = xr.open_zarr(source, chunks=None, consolidated=None)
     return archive
 
 
