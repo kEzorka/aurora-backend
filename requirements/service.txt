@@ -1,0 +1,30 @@
+# Окружение A — сервис: приём, хранилище, кэш, API (docs/SETUP.md §4).
+# Здесь нет и не должно быть torch: у него тяжёлые CUDA-зависимости, которым
+# нечего делать на сервере API. Инференс живёт в requirements/inference.txt.
+
+xarray>=2025.1
+numpy>=1.26
+dask[distributed]>=2025.1
+zarr>=3.0
+
+# cfgrib тянет бинарный eccodes. На ARM pip-сборка ломается — ставить из
+# conda-forge (docs/SETUP.md §4). На CI Linux x86 pip-колёса работают.
+cfgrib>=0.9.14
+eccodes>=2.38
+
+ecmwf-opendata>=0.3.19
+herbie-data>=2024.8
+cdsapi>=0.7.5
+
+gcsfs>=2025.2
+s3fs>=2025.2
+fsspec>=2025.2
+pyarrow>=19.0
+
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+apscheduler>=3.11
+
+structlog>=25.1
+prometheus-client>=0.21

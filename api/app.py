@@ -1,0 +1,458 @@
+"""Полоса 1: JSON `/v1` (docs/API_CONTRACT.md §0).
+
+Приложение только читает: хранилище открывается по указателю
+`forecast/current`, и всё, что оно знает про прогон, взято из самого прогона.
+Ничего не считается на лету, кроме единиц и производных величин — модель,
+конвейер и адаптеры сюда не импортируются (`tests/test_boundaries.py`).
+"""
+
+import hashlib
+import os
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, Final
+
+from fastapi import FastAPI, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+from api import fields
+from contracts import canon
+from storage import read
+
+#: Корень хранилища. Переменная окружения, а не аргумент запуска: сервис
+#: поднимается через `uvicorn api.app:app`, куда аргументы не передать.
+ROOT_ENV: Final = "AURORA_ROOT"
+DEFAULT_ROOT: Final = "/data/aurora"
+
+#: `source` полосы прогноза (contracts/canon.py §SOURCES). Ответ без него
+#: не даёт отличить прогноз восьмичасовой давности от реанализа
+#: (docs/API_CONTRACT.md §5.1).
+FORECAST_SOURCE: Final = "aurora-forecast"
+
+#: Минимальный TTL ответа: прогон меняется четыре раза в сутки, но отдавать
+#: `no-cache` из-за того, что следующий срок вот-вот наступит, незачем.
+MIN_TTL_SEC: Final = 60
+
+#: `Retry-After` при `503` — обязателен (docs/API_CONTRACT.md §4). Не шесть
+#: часов: прогон публикуется по расписанию, но заканчивается в непредсказуемую
+#: минуту, и клиент, отосланный на шесть часов, узнает о готовом прогнозе
+#: последним. Пять минут — компромисс между этим и опросом в холостую.
+RETRY_AFTER_SEC: Final = 300
+
+#: Длина ETag в шестнадцатеричных знаках. Половина sha256: столкновение двух
+#: разных ответов на 128 битах — не тот риск, ради которого стоит гонять по
+#: сети вдвое более длинный заголовок в каждом запросе и ответе.
+ETAG_HEX: Final = 32
+
+
+class ApiError(Exception):
+    """Ошибка с кодом и телом по контракту (docs/API_CONTRACT.md §4).
+
+    Тело плоское: `{"error": ..., ...}`. `HTTPException` завернул бы его
+    в `detail`, а подсказка в `413` обязана быть исполнимой как есть.
+    """
+
+    def __init__(self, status: int, error: str, detail: str, **extra: Any) -> None:
+        super().__init__(detail)
+        self.status = status
+        self.body: dict[str, Any] = {"error": error, "detail": detail, **extra}
+
+
+def create_app(root: str | Path | None = None) -> FastAPI:
+    """Собрать приложение над конкретным корнем хранилища."""
+    store = Path(root if root is not None else os.environ.get(ROOT_ENV, DEFAULT_ROOT))
+    app = FastAPI(title="Aurora backend", version="1", docs_url="/v1/docs")
+
+    @app.exception_handler(ApiError)
+    async def _handle(request: Request, error: ApiError) -> JSONResponse:
+        # `503` без `Retry-After` контракт не допускает (§4): клиент, которому
+        # не сказали когда, вернётся либо через секунду, либо никогда.
+        headers = {"Retry-After": str(RETRY_AFTER_SEC)} if error.status == 503 else None
+        return JSONResponse(status_code=error.status, content=error.body, headers=headers)
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation(request: Request, error: RequestValidationError) -> JSONResponse:
+        """`lat=abc` до тела ручки не доходит: FastAPI не смог привести тип и
+        отвечает `422` своим телом. Кодов в контракте перечислено пять (§4), и
+        `422` среди них нет, а тело обязано быть плоским `{"error", "detail"}` —
+        значит перевод сюда, а не проверка внутри каждой ручки."""
+        first = error.errors()[0]
+        where = ".".join(str(part) for part in first["loc"][1:]) or str(first["loc"][0])
+        return JSONResponse(
+            status_code=400,
+            content={"error": "bad_request", "detail": f"{where}: {first['msg']}"},
+        )
+
+    @app.get("/v1/forecast/point")
+    def forecast_point(
+        request: Request,
+        lat: float,
+        lon: float,
+        vars: str = fields.DEFAULT_VARS,
+        start: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        units: str = "human",
+        step_hours: int = canon.STEP_HOURS,
+    ) -> Response:
+        """Прогноз в точке на 10 суток (docs/API_CONTRACT.md §2)."""
+        # Границы проверяются здесь, а не через `Query(ge=..., le=...)`:
+        # валидатор FastAPI отдаёт `422` со своим телом, а коды ответов
+        # контракт перечисляет, и `422` в этом перечне нет (§4).
+        if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
+            raise ApiError(400, "bad_point", f"lat/lon вне глобуса: {lat}, {lon}")
+        if units not in ("si", "human"):
+            raise ApiError(400, "bad_units", f"units: got {units!r}, expected 'si' or 'human'")
+        try:
+            wanted = fields.resolve(vars)
+            names = fields.canonical_names(wanted)
+            layer = read.choose_layer(step_hours, names)
+        except (fields.UnknownFieldError, read.UnsupportedError) as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+        if start is not None and to is not None and _moment(start) > _moment(to):
+            raise ApiError(400, "bad_range", f"from > to: {start!r} > {to!r}")
+
+        layer_dir = _layer_dir(store, layer, names)
+        _check_horizon(layer_dir, step_hours, to)
+        try:
+            point = read.point_series(layer_dir, names, lat, lon, start=start, end=to)
+        except read.TooManyStepsError as error:
+            raise ApiError(
+                413,
+                "too_many_steps",
+                str(error),
+                requested=error.requested,
+                limit=error.limit,
+            ) from error
+        except read.OutOfCoverageError as error:
+            raise ApiError(404, "out_of_coverage", str(error)) from error
+        except read.UnsupportedError as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+
+        body = {
+            "query": {
+                "lat": lat,
+                "lon": lon,
+                # Всегда: пользователь должен видеть, что попал в узел сетки
+                # 0.25° (≈25 км), а не в свой двор (docs/API_CONTRACT.md §2).
+                "nearest_grid": {"lat": point.lat, "lon": point.lon},
+            },
+            "source": FORECAST_SOURCE,
+            "init_time": point.init_time,
+            "step_hours": step_hours,
+            "units": {field.name: field.unit(units) for field in wanted},
+            "times": list(point.times),
+            "series": {field.name: field.values(point.values, units) for field in wanted},
+        }
+        return _answer(request, body, point.init_time)
+
+    @app.get("/v1/forecast/grid")
+    def forecast_grid(
+        request: Request,
+        bbox: str,
+        var: str,
+        time: str,
+        stride: int = 1,
+        units: str = "human",
+    ) -> Response:
+        """Карта переменной на срок в компактном формате (docs/API_CONTRACT.md §1, §2)."""
+        if units not in ("si", "human"):
+            raise ApiError(400, "bad_units", f"units: got {units!r}, expected 'si' or 'human'")
+        box = _bbox(bbox)
+        try:
+            wanted = fields.resolve(var)
+        except fields.UnknownFieldError as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+        # Карта — это одна переменная за запрос (docs/API_CONTRACT.md §3):
+        # `values` плоский, и второй переменной в нём просто некуда лечь.
+        if len(wanted) != 1:
+            raise ApiError(
+                400,
+                "too_many_vars",
+                f"var: одна переменная на запрос сетки, получено {len(wanted)}",
+            )
+        field = wanted[0]
+        # Слой всегда шестичасовой: часовой лежит рядами, и карту из него никто
+        # не читает — `time` округляется к ближайшему сроку (docs/STORAGE.md §3).
+        try:
+            layer = read.choose_layer(canon.STEP_HOURS, field.inputs)
+        except read.UnsupportedError as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+
+        layer_dir = _must_exist(_run(store) / layer, layer)
+        try:
+            grid = read.grid_window(layer_dir, field.inputs, box, time, stride=stride)
+        except read.TooManyPointsError as error:
+            raise ApiError(
+                413,
+                "too_many_points",
+                str(error),
+                requested=error.requested,
+                limit=error.limit,
+                hint=f"используйте stride >= {error.suggested_stride} или уменьшите bbox",
+                suggested_stride=error.suggested_stride,
+            ) from error
+        except read.OutOfCoverageError as error:
+            raise ApiError(404, "out_of_coverage", str(error)) from error
+        except read.UnsupportedError as error:
+            raise ApiError(400, "bad_request", str(error)) from error
+
+        body = {
+            "query": {"bbox": list(box), "var": var, "time": time, "stride": stride},
+            "source": FORECAST_SOURCE,
+            "init_time": grid.init_time,
+            # Отданный срок, а не запрошенный: округление к ближайшему шагу
+            # пользователь обязан видеть — как и узел сетки в полосе точки.
+            "time": grid.time,
+            "units": {field.name: field.unit(units)},
+            "grid": {
+                "lat0": grid.lat0,
+                "lon0": grid.lon0,
+                "dlat": grid.dlat,
+                "dlon": grid.dlon,
+                "shape": list(grid.shape),
+                "order": "row-major",
+            },
+            "values": field.compact(grid.values, units),
+        }
+        return _answer(request, body, grid.init_time)
+
+    @app.get("/v1/meta/coverage")
+    def meta_coverage(request: Request) -> Response:
+        """Что вообще есть (docs/API_CONTRACT.md §2).
+
+        Фронтенд обязан звать это при старте, чтобы не показывать недоступные
+        периоды, — и обязан суметь это без знания хранилища. Поэтому наружу
+        не выходят ни имена слоёв (`coarse`, `hourly`, `points` — слова диска),
+        ни канонические имена переменных: слой описан своим шагом, переменная —
+        тем именем, которое можно подставить в `vars`. Лимиты в теле по той же
+        причине: `stride` фронтенд обязан уметь посчитать заранее, а не узнать
+        из `413` (§3).
+        """
+        spans = read.coverage(_run(store))
+        if not spans:
+            raise ApiError(503, "no_layer", "в прогоне нет ни одного слоя")
+        return _answer(
+            request,
+            {
+                "source": FORECAST_SOURCE,
+                **_freshness(spans[0].init_time),
+                "layers": [
+                    {
+                        "step_hours": span.step_hours,
+                        "from": span.first,
+                        "to": span.last,
+                        "steps": span.steps,
+                        "vars": [_described(name) for name in fields.offered(span.names)],
+                    }
+                    for span in spans
+                ],
+                "limits": {
+                    "max_points": read.MAX_POINTS,
+                    "max_steps": read.MAX_STEPS,
+                    "vars_per_grid": 1,
+                },
+            },
+            spans[0].init_time,
+        )
+
+    @app.get("/v1/health")
+    def health() -> JSONResponse:
+        """Доступность хранилища, свежесть прогноза, место на диске (§2).
+
+        Свежесть отдаётся числом, а не приговором «устарел»: порога устаревания
+        контракт не задаёт, а выдуманный порог в ответе — это решение за того,
+        кто его не принимал. `age_hours` и `expected_next` дают решить самому.
+
+        Живости воркера здесь нет: воркера ещё нет, и описывать его heartbeat
+        со стороны читателя значит закрепить формат, который писать будет не
+        этот код (BACKLOG 4.x).
+        """
+        readable = store.is_dir()
+        free, total = read.disk_usage(store) if readable else (0, 0)
+        body: dict[str, Any] = {
+            "status": "ok",
+            "storage": {"readable": readable, "free_bytes": free, "total_bytes": total},
+        }
+        run = read.published_run(store) if readable else None
+        spans = read.coverage(run) if run is not None else ()
+        if not spans:
+            body["status"] = "no_forecast"
+            return JSONResponse(
+                status_code=503, content=body, headers={"Retry-After": str(RETRY_AFTER_SEC)}
+            )
+        body["forecast"] = {
+            "source": FORECAST_SOURCE,
+            **_freshness(spans[0].init_time),
+            "layers": [{"step_hours": span.step_hours, "steps": span.steps} for span in spans],
+        }
+        return JSONResponse(content=body)
+
+    return app
+
+
+def _described(name: str) -> dict[str, Any]:
+    """Переменная покрытия: имя для `vars` и единицы в обеих системах.
+
+    Единицы кладутся рядом с именем, потому что без них фронтенд подпишет ось
+    наугад: «единицы всегда в ответе, даже если очевидны» (§5.4).
+    """
+    field = fields.FIELDS[name]
+    return {"name": name, "units": {"si": field.unit_si, "human": field.unit_human}}
+
+
+def _freshness(init_time: str) -> dict[str, Any]:
+    """Возраст прогноза и когда ждать следующий.
+
+    Возраст — то самое различие «прогноз, посчитанный 8 часов назад» против
+    реанализа (§5.1), а `expected_next` избавляет фронтенд от знания, что
+    прогон считается четыре раза в сутки.
+    """
+    started = datetime.strptime(init_time, read.TIME_FORMAT).replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - started).total_seconds() / 3600.0
+    following = started + timedelta(hours=canon.STEP_HOURS)
+    return {
+        "init_time": init_time,
+        "age_hours": round(age, 1),
+        "expected_next": following.strftime(read.TIME_FORMAT),
+    }
+
+
+def _bbox(text: str) -> tuple[float, float, float, float]:
+    """`south,west,north,east` из запроса в четыре числа.
+
+    Порядок именно такой (docs/API_CONTRACT.md §2), и перепутанный `bbox` —
+    это `400`, а не пустая карта: `55.7,37.5,55.8,37.7` и `37.5,55.7,37.7,55.8`
+    выглядят одинаково правдоподобно, но второй лежит в океане.
+    """
+    parts = [chunk.strip() for chunk in text.split(",")]
+    if len(parts) != 4:
+        raise ApiError(400, "bad_bbox", f"bbox: ожидается south,west,north,east, получено {text!r}")
+    try:
+        south, west, north, east = (float(part) for part in parts)
+    except ValueError as error:
+        raise ApiError(400, "bad_bbox", f"bbox: не число в {text!r}") from error
+    if not (-90.0 <= south <= 90.0 and -90.0 <= north <= 90.0):
+        raise ApiError(400, "bad_bbox", f"bbox: широта вне глобуса: {south}, {north}")
+    if not (-180.0 <= west <= 180.0 and -180.0 <= east <= 180.0):
+        raise ApiError(400, "bad_bbox", f"bbox: долгота вне глобуса: {west}, {east}")
+    if south >= north or west >= east:
+        raise ApiError(400, "bad_bbox", f"bbox: south < north и west < east, получено {text!r}")
+    return south, west, north, east
+
+
+def _run(store: Path) -> Path:
+    """Опубликованный прогон.
+
+    Прогона нет — это `503`, а не `404`: дата пользователя ни при чём, просто
+    сервис ещё ничего не посчитал (docs/API_CONTRACT.md §4).
+    """
+    run = read.published_run(store)
+    if run is None:
+        raise ApiError(503, "no_forecast", "опубликованного прогона нет")
+    return run
+
+
+def _must_exist(path: Path, layer: str) -> Path:
+    if not path.is_dir():
+        raise ApiError(503, "no_layer", f"в прогоне нет слоя {layer}")
+    return path
+
+
+def _layer_dir(store: Path, layer: str, names: Sequence[str]) -> Path:
+    """Каталог, из которого читается ряд в точке.
+
+    Какая раскладка отвечает — решает хранилище (`read.point_layer`): здесь
+    известно, что спросили, но не то, что для этого лежит на диске. Полоса
+    сетки, наоборот, идёт в слой напрямую: карту отдаёт раскладка карт.
+    """
+    return _must_exist(read.point_layer(_run(store), layer, names), layer)
+
+
+def _check_horizon(layer_dir: Path, step_hours: int, to: str | None) -> None:
+    """Часовой шаг дальше горизонта часового слоя — отказ, а не молчаливое
+    округление до шести часов (docs/API_CONTRACT.md §2)."""
+    if step_hours != canon.FINE_STEP_HOURS or to is None:
+        return
+    _, last = read.layer_span(layer_dir)
+    if _moment(to) > _moment(last):
+        raise ApiError(
+            400,
+            "hourly_horizon",
+            f"step_hours=1 работает на первые {canon.FINE_HORIZON_HOURS} ч "
+            f"(до {last}), запрошено до {to}",
+        )
+
+
+def _moment(text: str) -> datetime:
+    """ISO-строка запроса во время. Строки сравнивать нельзя: `2026-08-04`
+    лексикографически больше, чем `2026-08-01T00:00:00`, и запрос внутри
+    горизонта получил бы отказ."""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ApiError(400, "bad_time", f"time: got {text!r}, expected ISO 8601") from error
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _answer(request: Request, body: dict[str, Any], init_time: str) -> Response:
+    """Ответ с `Cache-Control`, `ETag` и `304` на повтор (BACKLOG 5.7).
+
+    TTL и ETag отвечают на разные вопросы, и одного мало. `max-age` говорит,
+    сколько ответ можно не перепроверять; но прогон живёт шесть часов, а карта
+    на 1440×721 весит мегабайты, и клиент, у которого TTL истёк за минуту до
+    нового прогона, тянет их заново ради тех же байтов. ETag превращает эту
+    перекачку в `304` длиной в заголовки.
+
+    Сравнивается ответ целиком, а не `init_time`: тело зависит ещё и от
+    запроса — единицы, шаг, набор переменных, — и ETag от одного `init_time`
+    выдал бы клиенту `304` на запрос, которого тот раньше не делал. Хеш от
+    готовых байтов такого не умеет по построению: другое тело — другой ETag.
+    """
+    rendered = JSONResponse(content=body)
+    tag = _etag(rendered.body)
+    if _unchanged(request.headers.get("if-none-match"), tag):
+        # `304` идёт без тела, но с теми же заголовками кэша: клиент продлевает
+        # по ним жизнь своей копии, и без `Cache-Control` он вернётся с тем же
+        # вопросом через секунду (RFC 9110 §15.4.5).
+        return Response(status_code=304, headers=_cache_headers(init_time, tag))
+    rendered.headers.update(_cache_headers(init_time, tag))
+    return rendered
+
+
+def _cache_headers(init_time: str, tag: str) -> dict[str, str]:
+    return {"Cache-Control": _cache_control(init_time), "ETag": tag}
+
+
+def _etag(body: bytes | memoryview) -> str:
+    """Сильный ETag от тела ответа.
+
+    Именно сильный: слабый (`W/`) разрешает считать ответы равными по смыслу
+    при разных байтах, а здесь равенство и есть побайтовое. Кавычки —
+    обязательная часть формата, а не украшение: без них заголовок невалиден.
+    """
+    return '"' + hashlib.sha256(body).hexdigest()[:ETAG_HEX] + '"'
+
+
+def _unchanged(offered: str | None, tag: str) -> bool:
+    """Совпал ли ETag клиента с нашим.
+
+    Список, а не одно значение: клиент вправе перечислить несколько (`"a",
+    "b"`) и прислать `*`. `W/` снимается — слабое сравнение для `304` контракт
+    HTTP как раз и предписывает (RFC 9110 §13.1.2).
+    """
+    if not offered:
+        return False
+    known = {part.strip().removeprefix("W/") for part in offered.split(",")}
+    return "*" in known or tag in known
+
+
+def _cache_control(init_time: str) -> str:
+    """TTL до следующего ожидаемого прогона (docs/API_CONTRACT.md §5.5)."""
+    started = datetime.strptime(init_time, read.TIME_FORMAT).replace(tzinfo=UTC)
+    left = (started + timedelta(hours=canon.STEP_HOURS)) - datetime.now(UTC)
+    return f"public, max-age={max(MIN_TTL_SEC, int(left.total_seconds()))}"
+
+
+app = create_app()
