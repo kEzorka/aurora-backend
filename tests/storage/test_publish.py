@@ -90,6 +90,23 @@ def test_published_run_is_reachable_through_the_current_pointer(tmp_path: Path) 
     assert read_manifest(final / "manifest.json")["published"] is True
 
 
+def test_every_artifact_carries_both_files(tmp_path: Path) -> None:
+    """Приёмка 2.4: манифест и отчёт валидатора лежат рядом с данными, и
+    манифест ссылается на отчёт по имени — ссылка обязана вести в файл."""
+    _stage(tmp_path, "2026-08-01T00Z")
+    final = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+
+    manifest = read_manifest(final / "manifest.json")
+    assert (final / str(manifest["validation"])).is_file()
+
+
+def test_a_manifest_naming_a_missing_report_is_refused(tmp_path: Path) -> None:
+    _stage(tmp_path, "2026-08-01T00Z")
+    manifest = {**_manifest("2026-08-01T00Z"), "validation": "checks.json"}
+    with pytest.raises(ValueError, match=r"checks\.json"):
+        publish_run(tmp_path, "2026-08-01T00Z", manifest=manifest)
+
+
 def test_staged_directory_is_gone_after_publication(tmp_path: Path) -> None:
     """Прогон переезжает переименованием, а не копированием: копия удвоила бы
     17.4 ГБ на диске и оставила бы окно, в котором есть обе половины."""

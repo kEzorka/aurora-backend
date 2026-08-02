@@ -78,8 +78,11 @@ def publish_run(root: str | Path, run_id: str, *, manifest: Mapping[str, Any]) -
     missing = [name for name in REQUIRED_LAYERS if not (staged / name).is_dir()]
     if missing:
         raise ValueError(f"{run_id}: слоёв нет: {', '.join(missing)}")
-    if not (staged / VALIDATION_NAME).is_file():
-        raise ValueError(f"{run_id}: нет {VALIDATION_NAME}, срез не проверен")
+    # Имя берётся из манифеста, а не из константы: манифест ссылается на отчёт
+    # по имени, и ссылка в никуда — тот же непроверенный срез, только молча.
+    report = str(manifest.get("validation", VALIDATION_NAME))
+    if not (staged / report).is_file():
+        raise ValueError(f"{run_id}: нет {report}, срез не проверен")
     if final.exists():
         raise FileExistsError(f"{final}: прогон {run_id} уже опубликован")
     _check_pointer(root / CURRENT_LINK)

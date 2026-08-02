@@ -26,6 +26,19 @@ def test_whole_run_fits_the_budget() -> None:
     assert run_bytes() <= RUN_BUDGET_BYTES
 
 
+def test_previous_run_weighs_a_tenth_of_the_current_one() -> None:
+    """docs/STORAGE.md §2: прошлый прогон — 1.3 ГБ. Держать его целиком нельзя:
+    два шестичасовых слоя это 30 ГБ при закреплённом ядре в 40."""
+    assert layer_bytes(canon.LAYERS["previous"]) == pytest.approx(1.33e9, rel=0.02)
+
+
+def test_pinned_forecast_layers_fit_the_run_budget() -> None:
+    """Закреплено прогнозом три слоя: текущий шестичасовой, текущий часовой и
+    прошлый прогон. Вместе 18.7 ГБ — это меньше половины ядра в 40 ГБ, где ещё
+    лежат анализ, месячные средние и последние 30 суток (docs/STORAGE.md §2)."""
+    assert run_bytes() + layer_bytes(canon.LAYERS["previous"]) <= 19 * 10**9
+
+
 def test_layer_sizes_match_the_documented_numbers() -> None:
     """docs/STORAGE.md §1: 15.0 ГБ + 2.4 ГБ = 17.4 ГБ."""
     assert layer_bytes(canon.LAYERS["coarse"]) == pytest.approx(15.0e9, rel=0.01)
