@@ -137,7 +137,15 @@ def _with_pressure_levels(root: Path) -> TestClient:
         run_id,
         manifest=build_manifest(
             f"forecast/{run_id}",
-            inputs=(Input("ifs-analysis", "2026-08-01T00:00Z", "sha256:" + "a" * 64),),
+            inputs=(
+                Input(
+                    "ifs-analysis",
+                    "2026-08-01T00:00Z",
+                    "sha256:" + "a" * 64,
+                    "ifs/0p25/oper",
+                    canon.SURFACE_INGESTED_VARS,
+                ),
+            ),
             model=Model("aurora", "aurora-0.25-v1.5", "9f2c1ab"),
             steps=1,
             timings_sec={"ingest": 1, "normalize": 1, "inference": 1, "write": 1},

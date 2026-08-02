@@ -30,11 +30,23 @@ TIME_FORMAT: Final = "%Y-%m-%dT%H:%M:%SZ"
 
 
 class Input(NamedTuple):
-    """Один вход прогона: откуда, на какой срок, с какой контрольной суммой."""
+    """Один вход прогона: откуда, на какой срок, с какой контрольной суммой.
+
+    `source` — словарь провенанса (`canon.SOURCES`), `stream` — адрес у
+    поставщика. Разделены потому, что `ifs/0p25/oper` и `aifs-single/0p25/oper`
+    дают один и тот же `ifs-analysis`, а облачность приходит только из второго
+    (ADDENDUM-01 §1, BACKLOG 1.10).
+
+    `fields` перечисляет, что именно приехало этой загрузкой. Без него вход на
+    срок пятидневной давности — это просто строка с чужой датой, и понять, что
+    устарела ровно сплочённость льда, а не весь срез, нельзя.
+    """
 
     source: str
     valid_time: str
     checksum: str
+    stream: str
+    fields: tuple[str, ...]
 
 
 class Model(NamedTuple):
@@ -65,6 +77,13 @@ def build_manifest(
             )
         if not entry.checksum.startswith("sha256:"):
             raise ValueError(f"checksum: got {entry.checksum!r}, expected 'sha256:<hex>'")
+        if not entry.stream:
+            raise ValueError("stream: вход без потока не говорит, откуда взялось поле")
+        unknown = [name for name in entry.fields if name not in canon.UNITS]
+        if not entry.fields or unknown:
+            raise ValueError(
+                f"fields: got {list(entry.fields)}, expected known names from the canon"
+            )
     if steps <= 0:
         raise ValueError(f"steps: got {steps}, expected a positive number")
     if set(timings_sec) != set(TIMING_KEYS):
@@ -74,7 +93,10 @@ def build_manifest(
     return {
         "artifact": artifact,
         "created_at": moment.astimezone(UTC).strftime(TIME_FORMAT),
-        "inputs": [entry._asdict() for entry in inputs],
+        # `fields` — кортеж, а кортежа в JSON нет: без явного `list` манифест на
+        # диске и манифест в памяти перестают сравниваться, и тесты на
+        # круговой обход начинают ловить не ошибку записи, а тип.
+        "inputs": [{**entry._asdict(), "fields": list(entry.fields)} for entry in inputs],
         "model": model._asdict(),
         "steps": steps,
         "timings_sec": {key: int(timings_sec[key]) for key in TIMING_KEYS},

@@ -24,8 +24,8 @@ from storage.manifest import (
 #: в docs/DATA_CONTRACT.md §3 пример манифеста и таблица ниже него расходятся,
 #: и словарь берётся один — тот, которым уже помечены наборы адаптеров.
 INPUTS = (
-    Input("ifs-analysis", "2026-07-31T18:00Z", "sha256:" + "a" * 64),
-    Input("ifs-analysis", "2026-08-01T00:00Z", "sha256:" + "b" * 64),
+    Input("ifs-analysis", "2026-07-31T18:00Z", "sha256:" + "a" * 64, "ifs/0p25/oper", ("2t",)),
+    Input("ifs-analysis", "2026-08-01T00:00Z", "sha256:" + "b" * 64, "ifs/0p25/oper", ("2t",)),
 )
 MODEL = Model("aurora", "aurora-0.25-v1.5", "9f2c1ab")
 TIMINGS = {"ingest": 480, "normalize": 190, "inference": 260, "write": 520}
@@ -71,11 +71,15 @@ def test_manifest_fields_carry_the_values_they_were_given() -> None:
             "source": "ifs-analysis",
             "valid_time": "2026-07-31T18:00Z",
             "checksum": INPUTS[0].checksum,
+            "stream": "ifs/0p25/oper",
+            "fields": ["2t"],
         },
         {
             "source": "ifs-analysis",
             "valid_time": "2026-08-01T00:00Z",
             "checksum": INPUTS[1].checksum,
+            "stream": "ifs/0p25/oper",
+            "fields": ["2t"],
         },
     ]
     assert manifest["validation"] == "validation.json"
@@ -89,7 +93,7 @@ def test_a_fresh_manifest_is_not_published() -> None:
 
 def test_unknown_input_source_is_refused() -> None:
     # Имя потока скачивания — не провенанс: в манифест оно попасть не должно.
-    bad = (Input("ecmwf-opendata-ifs", "2026-08-01T00:00Z", "sha256:" + "c" * 64),)
+    bad = (Input("ecmwf-opendata-ifs", "2026-08-01T00:00Z", "sha256:" + "c" * 64, "oper", ("2t",)),)
     with pytest.raises(ValueError, match="source"):
         _manifest(inputs=bad)
 
@@ -97,8 +101,33 @@ def test_unknown_input_source_is_refused() -> None:
 def test_checksum_without_algorithm_is_refused() -> None:
     """`sha256:` не украшение: без имени алгоритма контрольную сумму не с чем
     сравнить, когда алгоритм сменится."""
-    bad = (Input("era5t", "2026-08-01T00:00Z", "d" * 64),)
+    bad = (Input("era5t", "2026-08-01T00:00Z", "d" * 64, "reanalysis-era5-single-levels", ("ci",)),)
     with pytest.raises(ValueError, match="checksum"):
+        _manifest(inputs=bad)
+
+
+def test_an_input_without_a_stream_is_refused() -> None:
+    """`ifs/0p25/oper` и `aifs-single/0p25/oper` — один провенанс `ifs-analysis`,
+    и облачность приходит только из второго (BACKLOG 1.10). Без потока манифест
+    не отвечает на вопрос, откуда взялось поле."""
+    bad = (Input("ifs-analysis", "2026-08-01T00:00Z", "sha256:" + "e" * 64, "", ("2t",)),)
+    with pytest.raises(ValueError, match="stream"):
+        _manifest(inputs=bad)
+
+
+def test_an_input_without_fields_is_refused() -> None:
+    """Вход на срок пятидневной давности без списка полей читается как «весь
+    срез пятидневный», а устарела там одна сплочённость льда."""
+    bad = (Input("era5t", "2026-07-27T00:00Z", "sha256:" + "f" * 64, "era5", ()),)
+    with pytest.raises(ValueError, match="fields"):
+        _manifest(inputs=bad)
+
+
+def test_a_field_outside_the_canon_is_refused() -> None:
+    """Опечатка в имени поля иначе доедет до манифеста и останется там навсегда:
+    манифест никто не перечитывает, пока не случится разбор полётов."""
+    bad = (Input("era5t", "2026-07-27T00:00Z", "sha256:" + "f" * 64, "era5", ("sithick",)),)
+    with pytest.raises(ValueError, match="fields"):
         _manifest(inputs=bad)
 
 
