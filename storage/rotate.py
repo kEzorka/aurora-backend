@@ -230,16 +230,26 @@ def _walk(root: Path, *, keep: set[str], now: datetime, grace: timedelta) -> tup
     for run in sorted(runs.iterdir()):
         if not run.is_dir() or run.name in keep:
             continue
-        if current is not None and run.samefile(current):
+        # Сравниваются разрешённые пути, а не `samefile`: указатель, оставшийся
+        # висеть после ручного `rm -rf runs/<id>`, разрешается в несуществующий
+        # путь, и `samefile` на нём падает `FileNotFoundError`. Ротацию как раз
+        # и запускают в такую минуту — падать ей тут нечем.
+        here = run.resolve()
+        if here == current:
             continue
         if _still_publishing(run, now, grace):
             continue
-        survivor = PREVIOUS_LAYER if previous is not None and run.samefile(previous) else None
-        doomed_paths.extend(
-            item
-            for item in sorted(run.iterdir())
-            if item.name not in KEPT_FILES and item.name != survivor
-        )
+        survivor = PREVIOUS_LAYER if here == previous else None
+        entries = sorted(run.iterdir())
+        survivors = [item for item in entries if item.name in KEPT_FILES or item.name == survivor]
+        if not survivors:
+            # Ни документа, ни свёртки: каталог, от которого журналу нечего
+            # прочитать. Оставленный пустым, он выглядит как отметка о пропуске
+            # (`storage.publish._skipped_only` пускает публикацию в пустой
+            # каталог) — то есть как разрешение, которого никто не давал.
+            doomed_paths.append(run)
+            continue
+        doomed_paths.extend(item for item in entries if item not in survivors)
     return tuple(doomed_paths)
 
 
