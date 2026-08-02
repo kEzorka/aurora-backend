@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 import urllib.error
 import urllib.request
@@ -39,6 +40,13 @@ from adapters.index import Range
 #: Код, которым сервер отвечает на `Range`. Единственный приемлемый: `200`
 #: означает, что диапазон проигнорирован и приехал файл целиком.
 PARTIAL: Final = 206
+
+#: Код на запрос без `Range`. Так качается индекс: он маленький и нужен целиком.
+OK: Final = 200
+
+#: Сколько байт читать за раз при подсчёте суммы. Файл прогона — сотни
+#: мегабайт, и читать его в память целиком незачем.
+CHECKSUM_BLOCK: Final = 1 << 20
 
 #: Коды, после которых имеет смысл повторить. Всё остальное повтором не
 #: лечится: `404` не станет `200` от пятой попытки, а `416` — это неверный
@@ -87,6 +95,43 @@ def http(url: str, headers: dict[str, str], *, timeout: float = TIMEOUT_SEC) -> 
             )
     except urllib.error.HTTPError as answered:
         return Response(status=int(answered.code), body=bytes(answered.read()))
+
+
+def fetch_document(
+    url: str,
+    *,
+    transport: Transport,
+    delays: Sequence[float] = DEFAULT_DELAYS,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bytes:
+    """Скачать файл целиком, а не диапазоном: так качается `.index`.
+
+    Индекс — это килобайты, и диапазонами его брать нечем: смещения сообщений
+    лежат в нём самом. Ретраи те же, что у диапазонов, и по той же причине:
+    503 на индексе за семь минут до дедлайна отката — это пропущенный прогон,
+    если не повторить.
+    """
+    return _repeat(
+        url,
+        "whole file",
+        lambda: _check_document(transport(url, {})),
+        delays=delays,
+        sleep=sleep,
+    )
+
+
+def checksum(path: str | Path, *, block: int = CHECKSUM_BLOCK) -> str:
+    """Сумма файла в том виде, в каком её ждёт манифест: `sha256:<hex>`.
+
+    Считается по скачанному файлу, а не по телам ответов: проверять нужно то,
+    что легло на диск, — между склейкой и записью есть файловая система, и
+    оборванная запись даёт файл, которого ни один ответ сервера не содержал.
+    """
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as data:
+        while chunk := data.read(block):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def fetch_ranges(
@@ -147,11 +192,29 @@ def _one_range(
     delays: Sequence[float],
     sleep: Callable[[float], None],
 ) -> bytes:
+    return _repeat(
+        url,
+        span.header,
+        lambda: _check(span, transport(url, {"Range": span.header})),
+        delays=delays,
+        sleep=sleep,
+    )
+
+
+def _repeat(
+    url: str,
+    what: str,
+    call: Callable[[], bytes],
+    *,
+    delays: Sequence[float],
+    sleep: Callable[[float], None],
+) -> bytes:
+    """Повторить `call`, пока имеет смысл, и отказать, назвав, что не приехало."""
     attempts = len(delays) + 1
     last: Exception | None = None
     for attempt in range(attempts):
         try:
-            return _check(span, transport(url, {"Range": span.header}))
+            return call()
         except AdapterError as refused:
             if not _worth_repeating(refused):
                 raise
@@ -162,9 +225,17 @@ def _one_range(
             last = broken
         if attempt + 1 < attempts:
             sleep(delays[attempt])
-    raise AdapterError(
-        f"{url} {span.header}", f"{attempts} attempts failed: {last}", "206 and data"
-    )
+    raise AdapterError(f"{url} {what}", f"{attempts} attempts failed: {last}", "data")
+
+
+def _check_document(response: Response) -> bytes:
+    if response.status != OK:
+        raise AdapterError("status whole file", response.status, OK)
+    if not response.body:
+        # Пустой индекс — это не «полей нет», а страница с ошибкой нулевой
+        # длины: отбор по нему дал бы «поле не найдено» вместо отказа сети.
+        raise AdapterError("body whole file", "empty", "at least one byte")
+    return response.body
 
 
 def _check(span: Range, response: Response) -> bytes:
