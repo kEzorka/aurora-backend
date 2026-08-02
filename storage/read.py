@@ -33,6 +33,11 @@ LAYER_BY_STEP: Final[Mapping[int, str]] = {
 #: Потолок шагов в одном ответе (docs/API_CONTRACT.md §3).
 MAX_STEPS: Final = 500
 
+#: Потолок точек в одном ответе (docs/API_CONTRACT.md §3). Не защита от
+#: злоумышленника, а защита от опечатки: `bbox=-90,-180,90,180` без потолка
+#: собирает 1 038 240 чисел на срок и кладёт сервис на ровном месте.
+MAX_POINTS: Final = 50_000
+
 #: Копия восьми шестичасовых переменных в раскладке рядов (docs/STORAGE.md §3).
 POINTS_LAYER: Final = "points"
 
@@ -52,6 +57,23 @@ class TooManyStepsError(ValueError):
         super().__init__(f"шагов {requested}, потолок {limit}")
         self.requested = requested
         self.limit = limit
+
+
+class TooManyPointsError(ValueError):
+    """Точек в окне больше потолка.
+
+    Несёт `suggested_stride` — прореживание, при котором **то же самое окно**
+    в потолок укладывается. Подсказка обязана быть исполнимой
+    (docs/API_CONTRACT.md §3): «уменьшите запрос» пользователь и сам понял,
+    а какое именно число подставить — нет, и подбирать его перезапросами он
+    будет теми же тяжёлыми запросами, от которых потолок и защищает.
+    """
+
+    def __init__(self, requested: int, limit: int, suggested_stride: int) -> None:
+        super().__init__(f"точек {requested}, потолок {limit}")
+        self.requested = requested
+        self.limit = limit
+        self.suggested_stride = suggested_stride
 
 
 class Point(NamedTuple):
@@ -195,6 +217,7 @@ def grid_window(
     moment: str,
     *,
     stride: int = 1,
+    max_points: int = MAX_POINTS,
 ) -> Grid:
     """Окно карты на один срок (docs/API_CONTRACT.md §2).
 
@@ -206,6 +229,9 @@ def grid_window(
     Срок выбирается ближайшим — контракт это обещает, — но только внутри
     покрытия: без проверки `sel(method="nearest")` молча отдал бы конец
     горизонта на запрос про следующий месяц.
+
+    Потолок точек проверяется **до** `load()`: смысл потолка в том, чтобы
+    не поднимать с диска то, что всё равно не отдашь.
     """
     south, west, north, east = bbox
     if stride < 1:
@@ -230,11 +256,16 @@ def grid_window(
         if stamp is None or stamp < times[0] - half or stamp > times[-1] + half:
             raise OutOfCoverageError(f"{moment}: вне покрытия {_iso(times[0])}..{_iso(times[-1])}")
         window = ds[list(names)].sel(lat=slice(north, south), lon=slice(west, east))
+        full = (int(window.sizes["lat"]), int(window.sizes["lon"]))
+        if full[0] == 0 or full[1] == 0:
+            raise OutOfCoverageError(f"bbox {south},{west},{north},{east}: узлов сетки нет")
         if stride > 1:
             window = window.isel(lat=slice(None, None, stride), lon=slice(None, None, stride))
         ny, nx = int(window.sizes["lat"]), int(window.sizes["lon"])
-        if ny == 0 or nx == 0:
-            raise OutOfCoverageError(f"bbox {south},{west},{north},{east}: узлов сетки нет")
+        if ny * nx > max_points:
+            # Подсказка считается от неразреженного окна: пользователь подставит
+            # её вместо своего `stride`, а не поверх него.
+            raise TooManyPointsError(ny * nx, max_points, _stride_under(full, max_points))
 
         at = window.sel(time=stamp, method="nearest").transpose("lat", "lon").load()
         # Шаг берётся с полной оси, а не с выборки: у окна в одну строку
@@ -268,6 +299,21 @@ def _stamp(moment: str | None) -> np.datetime64 | None:
         return np.datetime64(moment.rstrip("Z"), "ns")
     except ValueError as error:
         raise UnsupportedError(f"time: got {moment!r}, expected ISO 8601") from error
+
+
+def _stride_under(shape: tuple[int, int], limit: int) -> int:
+    """Наименьшее прореживание, при котором окно `shape` влезает в потолок.
+
+    Считается перебором, а не формулой `sqrt(точек / потолок)`: прореженный
+    размер — это округление вверх, и на узком окне (одна строка, много
+    столбцов) формула даёт число, которое всё ещё не влезает. Подсказка,
+    которая не работает, хуже отсутствующей.
+    """
+    ny, nx = shape
+    stride = 1
+    while -(-ny // stride) * -(-nx // stride) > limit:
+        stride += 1
+    return stride
 
 
 def _coord(value: float | np.floating) -> float:

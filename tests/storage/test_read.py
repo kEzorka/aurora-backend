@@ -16,13 +16,18 @@ from storage import read
 from storage.manifest import read_manifest, write_manifest
 from storage.read import (
     OutOfCoverageError,
+    TooManyPointsError,
     TooManyStepsError,
     UnsupportedError,
     choose_layer,
+    grid_window,
     point_series,
     published_run,
 )
 from storage.write import write_layer
+
+#: Первый срок фикстуры.
+NOON = "2026-08-01T00:00:00Z"
 
 
 def test_a_run_without_the_published_flag_is_not_readable(published: Path) -> None:
@@ -129,6 +134,38 @@ def test_too_many_steps_is_refused_before_the_read(published: Path) -> None:
     assert run is not None
     with pytest.raises(TooManyStepsError):
         point_series(run / "coarse", ("2t",), 55.0, 37.0, max_steps=2)
+
+
+def test_too_many_points_is_refused_before_the_read(published: Path) -> None:
+    """Потолок точек проверяется до `load()`: смысл потолка в том, чтобы не
+    поднимать с диска то, что всё равно не отдашь."""
+    run = published_run(published)
+    assert run is not None
+    with pytest.raises(TooManyPointsError) as refused:
+        grid_window(run / "coarse", ("2t",), (-90.0, -180.0, 90.0, 135.0), NOON, max_points=10)
+
+    assert refused.value.requested == 6 * 8
+    stride = refused.value.suggested_stride
+    fits = grid_window(
+        run / "coarse", ("2t",), (-90.0, -180.0, 90.0, 135.0), NOON, stride=stride, max_points=10
+    )
+    assert fits.shape[0] * fits.shape[1] <= 10
+
+
+def test_the_suggested_stride_survives_a_window_one_row_tall(published: Path) -> None:
+    """Формула `sqrt(точек / потолок)` здесь врёт: прореженный размер — это
+    округление вверх, и на окне 1 × 8 с потолком 3 она даёт 2, при котором
+    точек остаётся 4. Подсказка, которая не работает, хуже отсутствующей."""
+    run = published_run(published)
+    assert run is not None
+    with pytest.raises(TooManyPointsError) as refused:
+        grid_window(run / "coarse", ("2t",), (50.0, -180.0, 60.0, 135.0), NOON, max_points=3)
+
+    assert refused.value.suggested_stride == 3
+    fits = grid_window(
+        run / "coarse", ("2t",), (50.0, -180.0, 60.0, 135.0), NOON, stride=3, max_points=3
+    )
+    assert fits.shape == (1, 3)
 
 
 def test_the_window_is_cut_by_time_and_not_by_string_order(published: Path) -> None:

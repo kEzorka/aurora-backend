@@ -168,6 +168,16 @@ def create_app(root: str | Path | None = None) -> FastAPI:
         layer_dir = _must_exist(_run(store) / layer, layer)
         try:
             grid = read.grid_window(layer_dir, field.inputs, box, time, stride=stride)
+        except read.TooManyPointsError as error:
+            raise ApiError(
+                413,
+                "too_many_points",
+                str(error),
+                requested=error.requested,
+                limit=error.limit,
+                hint=f"используйте stride >= {error.suggested_stride} или уменьшите bbox",
+                suggested_stride=error.suggested_stride,
+            ) from error
         except read.OutOfCoverageError as error:
             raise ApiError(404, "out_of_coverage", str(error)) from error
         except read.UnsupportedError as error:
