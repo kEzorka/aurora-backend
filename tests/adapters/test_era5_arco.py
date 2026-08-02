@@ -3,13 +3,7 @@
 Критерий дословно: «срез читается напрямую из бакета без скачивания архива».
 Доказывается он тут порчей: архив пишется с нарезкой по сроку, чанки чужих
 сроков забиваются мусором — и если запрошенный срок всё равно читается
-правильно, значит чужих чанков модуль не трогал. Мусор, а не удаление: Zarr
-на месте недостающего чанка молча отдаёт `fill_value`, и тест на удалении
-прошёл бы, даже если бы модуль качал весь архив.
-
-Сетка в фикстуре настоящего размера, 721×1440: `adapters.canonical` сверяет её
-поэлементно, и на уменьшенной проверялся бы не тот код, который поедет в бакет.
-Отсюда и осторожность с объёмом — сроков три, а не восемьдесят лет.
+правильно, значит чужих чанков модуль не трогал (`tests/fixtures/arco.py`).
 
 В сеть тесты не ходят: `open_archive` открывает локальный каталог тем же
 вызовом, что и `gs://`. Что переменные в бакете названы так, как в `RENAMES`,
@@ -18,12 +12,12 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
 import pytest
-import xarray as xr
 
 from adapters.era5_arco import (
     FINAL,
@@ -37,79 +31,26 @@ from adapters.era5_arco import (
 )
 from adapters.errors import AdapterError, NotYetInSourceError
 from contracts import canon
-
-#: Сроки фикстуры: три подряд идущих часа.
-STEPS = tuple(datetime(2020, 6, 1, hour, tzinfo=UTC) for hour in range(3))
-
-#: Уровни фикстуры: канонические тринадцать плюс четыре чужих. Чужие нужны,
-#: чтобы отбор уровней проверялся на архиве, где есть что не брать.
-LEVELS = tuple(sorted({*canon.PRESSURE_LEVELS, 10, 775, 800, 875}))
+from tests.fixtures.arco import LEVELS, STEPS, build, spoil
 
 NOW = datetime(2020, 12, 1, tzinfo=UTC)
 
 
-def _archive(path: Path, name: str, times: tuple[datetime, ...], levels: tuple[int, ...]) -> Path:
-    """Кусок ARCO на диске: имена, оси и нарезка по сроку — как в бакете.
-
-    Значение в точке равно её номеру по долготе: перекладка долготы двигает
-    данные вместе с осью, и проверить это можно только по значениям, а не по
-    подписям осей (ловушка 2 из docs/DOMAIN.md §6).
-    """
-    lat = np.round(np.arange(90.0, -90.0 - 0.125, -0.25), 2)
-    lon = np.round(np.arange(0.0, 360.0 - 0.125, 0.25), 2)
-    ramp = np.tile(np.arange(lon.size, dtype=np.float32), (lat.size, 1))
-    stamps = np.array([t.replace(tzinfo=None) for t in times], dtype="datetime64[ns]")
-
-    if levels:
-        values = np.stack(
-            [
-                np.stack([ramp + step * 1000.0 + level for level in levels])
-                for step in range(len(times))
-            ]
-        )
-        dims: tuple[str, ...] = ("time", "level", "latitude", "longitude")
-        coords = {
-            "time": stamps,
-            "level": np.array(levels, dtype="int32"),
-            "latitude": lat,
-            "longitude": lon,
-        }
-        chunks = {"time": 1, "level": len(levels), "latitude": lat.size, "longitude": lon.size}
-    else:
-        values = np.stack([ramp + step * 1000.0 for step in range(len(times))])
-        dims = ("time", "latitude", "longitude")
-        coords = {"time": stamps, "latitude": lat, "longitude": lon}
-        chunks = {"time": 1, "latitude": lat.size, "longitude": lon.size}
-
-    ds = xr.Dataset({name: (dims, values.astype(np.float32))}, coords=coords)
-    ds.to_zarr(
-        path,
-        mode="w",
-        zarr_format=3,
-        consolidated=False,
-        encoding={name: {"chunks": tuple(chunks[d] for d in dims)}},
-    )
-    return path
-
-
 @pytest.fixture(scope="module")
 def surface(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    return _archive(tmp_path_factory.mktemp("arco") / "sfc.zarr", "2m_temperature", STEPS, ())
+    return build(tmp_path_factory.mktemp("arco") / "sfc.zarr", "2m_temperature")
 
 
 @pytest.fixture(scope="module")
 def upper(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    return _archive(tmp_path_factory.mktemp("arco") / "pl.zarr", "temperature", STEPS[:1], LEVELS)
+    return build(tmp_path_factory.mktemp("arco") / "pl.zarr", "temperature", STEPS[:1], LEVELS)
 
 
-def _spoil(root: Path, name: str, keep: int) -> None:
-    """Забить мусором все чанки переменной, кроме принадлежащих сроку `keep`.
-
-    Имя чанка в Zarr v3 — `c/<срок>/<...>`; первый индекс и есть номер срока.
-    """
-    for chunk in sorted((root / name / "c").rglob("*")):
-        if chunk.is_file() and int(chunk.relative_to(root / name / "c").parts[0]) != keep:
-            chunk.write_bytes(b"\x00" * 32)
+def _spoiled(surface: Path, root: Path) -> Path:
+    """Копия архива, у которой целы чанки только второго срока."""
+    shutil.copytree(surface, root)
+    spoil(root, "2m_temperature", keep=1)
+    return root
 
 
 def test_a_slice_comes_out_canonical(surface: Path) -> None:
@@ -145,10 +86,7 @@ def test_only_the_requested_step_leaves_the_archive(surface: Path, tmp_path: Pat
     """Сам критерий приёмки. Чанки чужих сроков — мусор; срез читается верно,
     значит их не читали. Порядок в `_slice` тут и проверяется: `.load()` до
     отбора срока превратил бы это в чтение всего архива."""
-    root = tmp_path / "sfc.zarr"
-    root.parent.mkdir(parents=True, exist_ok=True)
-    _copy(surface, root)
-    _spoil(root, "2m_temperature", keep=1)
+    root = _spoiled(surface, tmp_path / "sfc.zarr")
 
     got = read_slice(open_archive(root), "2t", STEPS[1], now=NOW)
 
@@ -158,10 +96,7 @@ def test_only_the_requested_step_leaves_the_archive(surface: Path, tmp_path: Pat
 def test_the_spoiled_steps_are_really_unreadable(surface: Path, tmp_path: Path) -> None:
     """Страховка к предыдущему тесту: если мусор читается как данные, тот тест
     ничего не доказывает и проходит при любом поведении адаптера."""
-    root = tmp_path / "sfc.zarr"
-    root.parent.mkdir(parents=True, exist_ok=True)
-    _copy(surface, root)
-    _spoil(root, "2m_temperature", keep=1)
+    root = _spoiled(surface, tmp_path / "sfc.zarr")
 
     # Тип отказа выбирает кодек Zarr, а не мы: сейчас это `RuntimeError`
     # («Zstd decompression error»), при другом сжатии будет `ValueError`.
@@ -241,10 +176,3 @@ def test_the_archive_tells_its_own_edges(surface: Path) -> None:
     first, last = covers(open_archive(surface))
 
     assert (first, last) == (STEPS[0], STEPS[-1])
-
-
-def _copy(src: Path, dst: Path) -> None:
-    """Копия архива, которую тесту не жалко испортить."""
-    import shutil
-
-    shutil.copytree(src, dst)
