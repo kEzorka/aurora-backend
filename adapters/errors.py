@@ -15,3 +15,15 @@ class AdapterError(ValueError):
         self.field = field
         self.got = got
         self.expected = expected
+
+
+class NotYetInSourceError(LookupError):
+    """Данных за этот срок в источнике ещё нет.
+
+    Не `AdapterError`: тот про «источник отдал не то», а это про «источник
+    честно отдал всё, что у него есть». Реанализ отстаёт от сегодняшнего дня
+    (docs/PIPELINE.md §1), и дата из этой слепой зоны — нормальный вопрос без
+    ответа, а не сбой. Наверху из него делают `cache.proxy.NotYetError`, и
+    делают это на стороне кэша: адаптеру про кэш знать не положено
+    (`tests/test_boundaries.py`).
+    """
