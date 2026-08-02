@@ -6,13 +6,14 @@
 конвейер и адаптеры сюда не импортируются (`tests/test_boundaries.py`).
 """
 
+import hashlib
 import os
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -39,6 +40,11 @@ MIN_TTL_SEC: Final = 60
 #: минуту, и клиент, отосланный на шесть часов, узнает о готовом прогнозе
 #: последним. Пять минут — компромисс между этим и опросом в холостую.
 RETRY_AFTER_SEC: Final = 300
+
+#: Длина ETag в шестнадцатеричных знаках. Половина sha256: столкновение двух
+#: разных ответов на 128 битах — не тот риск, ради которого стоит гонять по
+#: сети вдвое более длинный заголовок в каждом запросе и ответе.
+ETAG_HEX: Final = 32
 
 
 class ApiError(Exception):
@@ -81,6 +87,7 @@ def create_app(root: str | Path | None = None) -> FastAPI:
 
     @app.get("/v1/forecast/point")
     def forecast_point(
+        request: Request,
         lat: float,
         lon: float,
         vars: str = fields.DEFAULT_VARS,
@@ -88,7 +95,7 @@ def create_app(root: str | Path | None = None) -> FastAPI:
         to: str | None = None,
         units: str = "human",
         step_hours: int = canon.STEP_HOURS,
-    ) -> JSONResponse:
+    ) -> Response:
         """Прогноз в точке на 10 суток (docs/API_CONTRACT.md §2)."""
         # Границы проверяются здесь, а не через `Query(ge=..., le=...)`:
         # валидатор FastAPI отдаёт `422` со своим телом, а коды ответов
@@ -138,18 +145,17 @@ def create_app(root: str | Path | None = None) -> FastAPI:
             "times": list(point.times),
             "series": {field.name: field.values(point.values, units) for field in wanted},
         }
-        return JSONResponse(
-            content=body, headers={"Cache-Control": _cache_control(point.init_time)}
-        )
+        return _answer(request, body, point.init_time)
 
     @app.get("/v1/forecast/grid")
     def forecast_grid(
+        request: Request,
         bbox: str,
         var: str,
         time: str,
         stride: int = 1,
         units: str = "human",
-    ) -> JSONResponse:
+    ) -> Response:
         """Карта переменной на срок в компактном формате (docs/API_CONTRACT.md §1, §2)."""
         if units not in ("si", "human"):
             raise ApiError(400, "bad_units", f"units: got {units!r}, expected 'si' or 'human'")
@@ -210,10 +216,10 @@ def create_app(root: str | Path | None = None) -> FastAPI:
             },
             "values": field.compact(grid.values, units),
         }
-        return JSONResponse(content=body, headers={"Cache-Control": _cache_control(grid.init_time)})
+        return _answer(request, body, grid.init_time)
 
     @app.get("/v1/meta/coverage")
-    def meta_coverage() -> JSONResponse:
+    def meta_coverage(request: Request) -> Response:
         """Что вообще есть (docs/API_CONTRACT.md §2).
 
         Фронтенд обязан звать это при старте, чтобы не показывать недоступные
@@ -227,8 +233,9 @@ def create_app(root: str | Path | None = None) -> FastAPI:
         spans = read.coverage(_run(store))
         if not spans:
             raise ApiError(503, "no_layer", "в прогоне нет ни одного слоя")
-        return JSONResponse(
-            content={
+        return _answer(
+            request,
+            {
                 "source": FORECAST_SOURCE,
                 **_freshness(spans[0].init_time),
                 "layers": [
@@ -247,7 +254,7 @@ def create_app(root: str | Path | None = None) -> FastAPI:
                     "vars_per_grid": 1,
                 },
             },
-            headers={"Cache-Control": _cache_control(spans[0].init_time)},
+            spans[0].init_time,
         )
 
     @app.get("/v1/health")
@@ -387,6 +394,58 @@ def _moment(text: str) -> datetime:
     except ValueError as error:
         raise ApiError(400, "bad_time", f"time: got {text!r}, expected ISO 8601") from error
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _answer(request: Request, body: dict[str, Any], init_time: str) -> Response:
+    """Ответ с `Cache-Control`, `ETag` и `304` на повтор (BACKLOG 5.7).
+
+    TTL и ETag отвечают на разные вопросы, и одного мало. `max-age` говорит,
+    сколько ответ можно не перепроверять; но прогон живёт шесть часов, а карта
+    на 1440×721 весит мегабайты, и клиент, у которого TTL истёк за минуту до
+    нового прогона, тянет их заново ради тех же байтов. ETag превращает эту
+    перекачку в `304` длиной в заголовки.
+
+    Сравнивается ответ целиком, а не `init_time`: тело зависит ещё и от
+    запроса — единицы, шаг, набор переменных, — и ETag от одного `init_time`
+    выдал бы клиенту `304` на запрос, которого тот раньше не делал. Хеш от
+    готовых байтов такого не умеет по построению: другое тело — другой ETag.
+    """
+    rendered = JSONResponse(content=body)
+    tag = _etag(rendered.body)
+    if _unchanged(request.headers.get("if-none-match"), tag):
+        # `304` идёт без тела, но с теми же заголовками кэша: клиент продлевает
+        # по ним жизнь своей копии, и без `Cache-Control` он вернётся с тем же
+        # вопросом через секунду (RFC 9110 §15.4.5).
+        return Response(status_code=304, headers=_cache_headers(init_time, tag))
+    rendered.headers.update(_cache_headers(init_time, tag))
+    return rendered
+
+
+def _cache_headers(init_time: str, tag: str) -> dict[str, str]:
+    return {"Cache-Control": _cache_control(init_time), "ETag": tag}
+
+
+def _etag(body: bytes | memoryview) -> str:
+    """Сильный ETag от тела ответа.
+
+    Именно сильный: слабый (`W/`) разрешает считать ответы равными по смыслу
+    при разных байтах, а здесь равенство и есть побайтовое. Кавычки —
+    обязательная часть формата, а не украшение: без них заголовок невалиден.
+    """
+    return '"' + hashlib.sha256(body).hexdigest()[:ETAG_HEX] + '"'
+
+
+def _unchanged(offered: str | None, tag: str) -> bool:
+    """Совпал ли ETag клиента с нашим.
+
+    Список, а не одно значение: клиент вправе перечислить несколько (`"a",
+    "b"`) и прислать `*`. `W/` снимается — слабое сравнение для `304` контракт
+    HTTP как раз и предписывает (RFC 9110 §13.1.2).
+    """
+    if not offered:
+        return False
+    known = {part.strip().removeprefix("W/") for part in offered.split(",")}
+    return "*" in known or tag in known
 
 
 def _cache_control(init_time: str) -> str:
