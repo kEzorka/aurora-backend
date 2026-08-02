@@ -9,6 +9,7 @@
 обязан тот, кто знает, почему отказано.
 """
 
+import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple
@@ -282,6 +283,62 @@ def grid_window(
             time=_iso(at["time"].values),
             values={name: _jsonable(at[name].values.ravel()) for name in names},
         )
+
+
+class Span(NamedTuple):
+    """Что слой на самом деле покрывает.
+
+    Числа берутся с диска, а не из `canon.Layer`: канон говорит, сколько шагов
+    прогон *должен* был записать, а покрытие — это то, что записано. Разойтись
+    они могут (оборванный прогон, урезанный горизонт), и увидеть расхождение
+    обязан читатель, а не только тот, кто смотрит в каталог.
+    """
+
+    step_hours: int
+    init_time: str
+    first: str
+    last: str
+    steps: int
+    names: tuple[str, ...]
+
+
+def coverage(run: str | Path) -> tuple[Span, ...]:
+    """Покрытие опубликованного прогона по шагам.
+
+    Ключ — шаг в часах, а не имя слоя: `coarse`, `hourly` и `points` это
+    слова хранилища, и фронтенд, узнавший их, начинает от них зависеть
+    (docs/API_CONTRACT.md §2, `/v1/meta/coverage`).
+    """
+    run = Path(run)
+    spans: list[Span] = []
+    for step_hours, layer in sorted(LAYER_BY_STEP.items()):
+        layer_dir = run / layer
+        if not layer_dir.is_dir():
+            continue
+        with xr.open_zarr(layer_dir, chunks=None) as ds:
+            times = ds["time"].values
+            spans.append(
+                Span(
+                    step_hours=step_hours,
+                    init_time=str(ds.attrs.get("init_time", _iso(times[0]))),
+                    first=_iso(times[0]),
+                    last=_iso(times[-1]),
+                    steps=int(times.size),
+                    names=tuple(str(name) for name in ds.data_vars),
+                )
+            )
+    return tuple(spans)
+
+
+def disk_usage(root: str | Path) -> tuple[int, int]:
+    """Свободно и всего байт на файловой системе хранилища.
+
+    Отдаётся файловая система, а не бюджеты из docs/STORAGE.md §3: 40 ГБ ядра
+    и 195 ГБ кэша — это план, а не разделы, и пока ротация (2.6) их не
+    выдерживает, «кэш заполнен на 42 %» было бы выдумкой.
+    """
+    usage = shutil.disk_usage(root)
+    return usage.free, usage.total
 
 
 def layer_span(layer_dir: str | Path) -> tuple[str, str]:

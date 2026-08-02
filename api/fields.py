@@ -128,6 +128,11 @@ DEFAULT_DIGITS: Final = 3
 #: Публичные имена, которых в каноне нет.
 _ALIASES: Final[Mapping[str, str]] = MappingProxyType({"t2m": "2t", "d2m": "2d"})
 
+#: Обратная сторона `_ALIASES`: под каким именем величину предлагать клиенту.
+_PUBLIC: Final[Mapping[str, str]] = MappingProxyType(
+    {canonical: alias for alias, canonical in _ALIASES.items()}
+)
+
 
 def _plain(name: str, canonical: str) -> Field:
     si = canon.UNITS[canonical]
@@ -175,6 +180,26 @@ def resolve(names: str | Sequence[str]) -> tuple[Field, ...]:
     if not fields:
         raise UnknownFieldError("vars: список пуст")
     return tuple(fields)
+
+
+def offered(names: Sequence[str]) -> tuple[str, ...]:
+    """Что клиент может подставить в `vars`, если на диске лежат `names`.
+
+    Обратная сторона `resolve`, и не то же самое, что ключи `FIELDS`: каталог
+    перечисляет всё, что сервис примет, а покрытию нужно ровно одно имя на
+    величину. Увидев рядом `2t` и `t2m`, фронтенд показал бы пользователю две
+    одинаковые температуры, поэтому у величины с публичным именем каноническое
+    не предлагается. `wind` добавляется, только когда лежат обе составляющие:
+    скорости ветра в хранилище нет, она считается из `10u` и `10v`.
+
+    Имена не из канона молча пропускаются: покрытие обещает то, что можно
+    спросить, а не опись каталога.
+    """
+    available = set(names)
+    public = [_PUBLIC.get(name, name) for name in names if name in canon.UNITS]
+    if {"10u", "10v"} <= available:
+        public.append("wind")
+    return tuple(public)
 
 
 def canonical_names(fields: Sequence[Field]) -> tuple[str, ...]:

@@ -34,6 +34,12 @@ FORECAST_SOURCE: Final = "aurora-forecast"
 #: `no-cache` из-за того, что следующий срок вот-вот наступит, незачем.
 MIN_TTL_SEC: Final = 60
 
+#: `Retry-After` при `503` — обязателен (docs/API_CONTRACT.md §4). Не шесть
+#: часов: прогон публикуется по расписанию, но заканчивается в непредсказуемую
+#: минуту, и клиент, отосланный на шесть часов, узнает о готовом прогнозе
+#: последним. Пять минут — компромисс между этим и опросом в холостую.
+RETRY_AFTER_SEC: Final = 300
+
 
 class ApiError(Exception):
     """Ошибка с кодом и телом по контракту (docs/API_CONTRACT.md §4).
@@ -55,7 +61,10 @@ def create_app(root: str | Path | None = None) -> FastAPI:
 
     @app.exception_handler(ApiError)
     async def _handle(request: Request, error: ApiError) -> JSONResponse:
-        return JSONResponse(status_code=error.status, content=error.body)
+        # `503` без `Retry-After` контракт не допускает (§4): клиент, которому
+        # не сказали когда, вернётся либо через секунду, либо никогда.
+        headers = {"Retry-After": str(RETRY_AFTER_SEC)} if error.status == 503 else None
+        return JSONResponse(status_code=error.status, content=error.body, headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def _handle_validation(request: Request, error: RequestValidationError) -> JSONResponse:
@@ -203,7 +212,104 @@ def create_app(root: str | Path | None = None) -> FastAPI:
         }
         return JSONResponse(content=body, headers={"Cache-Control": _cache_control(grid.init_time)})
 
+    @app.get("/v1/meta/coverage")
+    def meta_coverage() -> JSONResponse:
+        """Что вообще есть (docs/API_CONTRACT.md §2).
+
+        Фронтенд обязан звать это при старте, чтобы не показывать недоступные
+        периоды, — и обязан суметь это без знания хранилища. Поэтому наружу
+        не выходят ни имена слоёв (`coarse`, `hourly`, `points` — слова диска),
+        ни канонические имена переменных: слой описан своим шагом, переменная —
+        тем именем, которое можно подставить в `vars`. Лимиты в теле по той же
+        причине: `stride` фронтенд обязан уметь посчитать заранее, а не узнать
+        из `413` (§3).
+        """
+        spans = read.coverage(_run(store))
+        if not spans:
+            raise ApiError(503, "no_layer", "в прогоне нет ни одного слоя")
+        return JSONResponse(
+            content={
+                "source": FORECAST_SOURCE,
+                **_freshness(spans[0].init_time),
+                "layers": [
+                    {
+                        "step_hours": span.step_hours,
+                        "from": span.first,
+                        "to": span.last,
+                        "steps": span.steps,
+                        "vars": [_described(name) for name in fields.offered(span.names)],
+                    }
+                    for span in spans
+                ],
+                "limits": {
+                    "max_points": read.MAX_POINTS,
+                    "max_steps": read.MAX_STEPS,
+                    "vars_per_grid": 1,
+                },
+            },
+            headers={"Cache-Control": _cache_control(spans[0].init_time)},
+        )
+
+    @app.get("/v1/health")
+    def health() -> JSONResponse:
+        """Доступность хранилища, свежесть прогноза, место на диске (§2).
+
+        Свежесть отдаётся числом, а не приговором «устарел»: порога устаревания
+        контракт не задаёт, а выдуманный порог в ответе — это решение за того,
+        кто его не принимал. `age_hours` и `expected_next` дают решить самому.
+
+        Живости воркера здесь нет: воркера ещё нет, и описывать его heartbeat
+        со стороны читателя значит закрепить формат, который писать будет не
+        этот код (BACKLOG 4.x).
+        """
+        readable = store.is_dir()
+        free, total = read.disk_usage(store) if readable else (0, 0)
+        body: dict[str, Any] = {
+            "status": "ok",
+            "storage": {"readable": readable, "free_bytes": free, "total_bytes": total},
+        }
+        run = read.published_run(store) if readable else None
+        spans = read.coverage(run) if run is not None else ()
+        if not spans:
+            body["status"] = "no_forecast"
+            return JSONResponse(
+                status_code=503, content=body, headers={"Retry-After": str(RETRY_AFTER_SEC)}
+            )
+        body["forecast"] = {
+            "source": FORECAST_SOURCE,
+            **_freshness(spans[0].init_time),
+            "layers": [{"step_hours": span.step_hours, "steps": span.steps} for span in spans],
+        }
+        return JSONResponse(content=body)
+
     return app
+
+
+def _described(name: str) -> dict[str, Any]:
+    """Переменная покрытия: имя для `vars` и единицы в обеих системах.
+
+    Единицы кладутся рядом с именем, потому что без них фронтенд подпишет ось
+    наугад: «единицы всегда в ответе, даже если очевидны» (§5.4).
+    """
+    field = fields.FIELDS[name]
+    return {"name": name, "units": {"si": field.unit_si, "human": field.unit_human}}
+
+
+def _freshness(init_time: str) -> dict[str, Any]:
+    """Возраст прогноза и когда ждать следующий.
+
+    Возраст — то самое различие «прогноз, посчитанный 8 часов назад» против
+    реанализа (§5.1), а `expected_next` избавляет фронтенд от знания, что
+    прогон считается четыре раза в сутки.
+    """
+    started = datetime.strptime(init_time, read.TIME_FORMAT).replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - started).total_seconds() / 3600.0
+    following = started + timedelta(hours=canon.STEP_HOURS)
+    return {
+        "init_time": init_time,
+        "age_hours": round(age, 1),
+        "expected_next": following.strftime(read.TIME_FORMAT),
+    }
 
 
 def _bbox(text: str) -> tuple[float, float, float, float]:

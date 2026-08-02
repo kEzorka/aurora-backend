@@ -220,6 +220,37 @@ def test_a_field_on_pressure_levels_is_not_a_series(tmp_path: Path) -> None:
         point_series(path, ("t",), 55.75, 37.5)
 
 
+def test_coverage_is_keyed_by_step_and_skips_the_copy(published: Path) -> None:
+    """Покрытие перечисляет слои, которые обслуживают запросы, и знает их по
+    шагу. `points` — вторая копия шестичасовых полей в другой раскладке
+    (docs/STORAGE.md §3), и отдельным покрытием она не является."""
+    run = published_run(published)
+    assert run is not None
+    spans = read.coverage(run)
+
+    assert [span.step_hours for span in spans] == [canon.FINE_STEP_HOURS, canon.STEP_HOURS]
+    hourly = spans[0]
+    assert (hourly.first, hourly.last, hourly.steps) == (
+        "2026-08-01T00:00:00Z",
+        "2026-08-01T03:00:00Z",
+        4,
+    )
+    assert hourly.init_time == "2026-08-01T00:00:00Z"
+    assert set(hourly.names) == set(canon.HOURLY_VARS)
+
+
+def test_coverage_of_a_run_without_layers_is_empty(tmp_path: Path) -> None:
+    """Не исключение: «прогона нет» и «прогон пуст» — это один ответ читателю,
+    и разбирать его на два в хранилище незачем."""
+    assert read.coverage(tmp_path) == ()
+
+
+def test_disk_usage_is_the_filesystem(published: Path) -> None:
+    free, total = read.disk_usage(published)
+
+    assert 0 < free <= total
+
+
 def test_layer_span_is_the_first_and_the_last_step(published: Path) -> None:
     run = published_run(published)
     assert run is not None
