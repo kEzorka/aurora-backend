@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api import fields
@@ -55,6 +56,19 @@ def create_app(root: str | Path | None = None) -> FastAPI:
     @app.exception_handler(ApiError)
     async def _handle(request: Request, error: ApiError) -> JSONResponse:
         return JSONResponse(status_code=error.status, content=error.body)
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation(request: Request, error: RequestValidationError) -> JSONResponse:
+        """`lat=abc` до тела ручки не доходит: FastAPI не смог привести тип и
+        отвечает `422` своим телом. Кодов в контракте перечислено пять (§4), и
+        `422` среди них нет, а тело обязано быть плоским `{"error", "detail"}` —
+        значит перевод сюда, а не проверка внутри каждой ручки."""
+        first = error.errors()[0]
+        where = ".".join(str(part) for part in first["loc"][1:]) or str(first["loc"][0])
+        return JSONResponse(
+            status_code=400,
+            content={"error": "bad_request", "detail": f"{where}: {first['msg']}"},
+        )
 
     @app.get("/v1/forecast/point")
     def forecast_point(

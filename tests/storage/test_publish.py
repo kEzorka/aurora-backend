@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+import zarr
 
 from contracts import canon
 from storage import publish
@@ -104,6 +105,22 @@ def test_publication_builds_the_point_layer(tmp_path: Path) -> None:
     np.testing.assert_allclose(
         xr.open_zarr(final / "points")["2t"].values, xr.open_zarr(final / "coarse")["2t"].values
     )
+
+
+def test_the_layers_lie_on_disk_in_the_layouts_they_were_promised(tmp_path: Path) -> None:
+    """Проверяется артефакт, а не таблица `layout_for`. Раскладки различает
+    чанк по времени: у карт он равен единице (срок за раз), у рядов — всей оси.
+    Слой, записанный не в своей раскладке, проходит все прочие тесты и молча
+    отвечает в сто раз дольше (docs/STORAGE.md §3)."""
+    _stage(tmp_path, "2026-08-01T00Z")
+    final = publish_run(tmp_path, "2026-08-01T00Z", manifest=_manifest("2026-08-01T00Z"))
+
+    def time_chunk(layer: str) -> int:
+        return int(zarr.open_group(str(final / layer))["2t"].chunks[0])
+
+    assert time_chunk("coarse") == 1  # карты
+    assert time_chunk("points") == 2  # ряды: вся ось времени тестового прогона
+    assert time_chunk("hourly") == 2
 
 
 def test_every_artifact_carries_both_files(tmp_path: Path) -> None:

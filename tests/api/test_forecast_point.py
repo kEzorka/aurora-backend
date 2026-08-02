@@ -130,6 +130,24 @@ def test_a_point_off_the_globe_is_four_hundred(client: TestClient) -> None:
     assert response.json()["error"] == "bad_point"
 
 
+def test_a_non_numeric_point_is_four_hundred_too(client: TestClient) -> None:
+    """`lat=abc` не доходит до ручки: тип не привёлся. Отказ всё равно обязан
+    быть по контракту — код из перечня §4 и плоское тело, а не `422` FastAPI."""
+    response = client.get(POINT, params={"lat": "abc", "lon": 0.0})
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"] == "bad_request"
+    assert "lat" in body["detail"]
+
+
+def test_a_missing_point_is_four_hundred(client: TestClient) -> None:
+    response = client.get(POINT, params={"lon": 0.0})
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "bad_request"
+
+
 def test_an_empty_store_answers_five_hundred_three(tmp_path: Path) -> None:
     """Прогона нет — виноват сервис, а не запрос пользователя."""
     response = TestClient(create_app(tmp_path)).get(POINT, params=MOSCOW)
