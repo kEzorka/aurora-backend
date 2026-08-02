@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from storage.manifest import (
+    Degraded,
     Input,
     Model,
     build_manifest,
@@ -52,6 +53,7 @@ def test_manifest_has_every_field_of_the_contract() -> None:
         "model",
         "steps",
         "timings_sec",
+        "degraded",
         "validation",
         "published",
     }
@@ -151,6 +153,40 @@ def test_unexpected_timing_key_is_refused() -> None:
 def test_zero_steps_is_refused() -> None:
     with pytest.raises(ValueError, match="steps"):
         _manifest(steps=0)
+
+
+def test_a_clean_run_says_so_instead_of_staying_silent() -> None:
+    """`degraded: null` есть всегда. Отсутствие ключа читатель не отличит от
+    манифеста, написанного старым кодом, и «деградации не было» пришлось бы
+    предполагать ровно там, где предполагать нельзя."""
+    assert _manifest()["degraded"] is None
+
+
+def test_a_fallback_to_gfs_says_it_was_a_fallback() -> None:
+    """`inputs[].source == "gfs-analysis"` на это не отвечает: GFS бывает в
+    манифесте и по выбору (отладка без ключей ECMWF), и по откату, и алерта
+    заслуживает только второе (docs/PIPELINE.md §2)."""
+    degraded = _manifest(
+        degraded=Degraded("late_input", ("ifs/0p25/oper",), "2026-08-01T08:30:00Z")
+    )["degraded"]
+
+    assert degraded == {
+        "reason": "late_input",
+        "waited_for": ["ifs/0p25/oper"],
+        "deadline": "2026-08-01T08:30:00Z",
+    }
+
+
+def test_a_degradation_without_a_reason_from_the_vocabulary_is_refused() -> None:
+    with pytest.raises(ValueError, match=r"degraded\.reason"):
+        _manifest(degraded=Degraded("slow", ("ifs/0p25/oper",), "2026-08-01T08:30:00Z"))
+
+
+def test_a_degradation_must_name_what_it_waited_for() -> None:
+    """«Прогон деградировал» без потока — это жалоба без адресата: дежурному
+    дальше некуда идти."""
+    with pytest.raises(ValueError, match=r"degraded\.waited_for"):
+        _manifest(degraded=Degraded("late_input", (), "2026-08-01T08:30:00Z"))
 
 
 def test_manifest_survives_a_round_trip_through_disk(tmp_path: Path) -> None:

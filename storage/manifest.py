@@ -46,6 +46,15 @@ SKIP_REASONS: Final = (
     "no_forecast",
 )
 
+#: Почему прогон получился хуже обычного, хотя получился. Набор закрыт по той же
+#: причине, что и `SKIP_REASONS`, и пока в нём одна запись: остальные виды
+#: деградации сегодня некому обнаружить, а причина, которую никто не ставит, —
+#: это словарь, расходящийся с кодом.
+DEGRADED_REASONS: Final = (
+    # ECMWF не отдал данные до дедлайна отката, считали на GFS (PIPELINE.md §2).
+    "late_input",
+)
+
 #: Формат времени в манифесте — ISO 8601 в UTC, секундная точность.
 TIME_FORMAT: Final = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -78,6 +87,21 @@ class Model(NamedTuple):
     revision: str
 
 
+class Degraded(NamedTuple):
+    """Прогон посчитан, но хуже обычного: почему, чего не дождались и до каких пор.
+
+    Существует потому, что `inputs[].source == "gfs-analysis"` на этот вопрос не
+    отвечает. GFS в манифесте бывает по двум причинам — его выбрали намеренно
+    (отладка без ключей ECMWF) и на него откатились, потому что ECMWF опоздал, —
+    и алерта заслуживает только вторая. Без отдельного поля они неразличимы, и
+    деградация тонет в прогонах, где всё шло по плану.
+    """
+
+    reason: str
+    waited_for: tuple[str, ...]
+    deadline: str
+
+
 def build_manifest(
     artifact: str,
     *,
@@ -87,6 +111,7 @@ def build_manifest(
     timings_sec: Mapping[str, int],
     created_at: datetime | None = None,
     validation: str = VALIDATION_NAME,
+    degraded: Degraded | None = None,
 ) -> dict[str, Any]:
     """Собрать манифест. `published` всегда `False`: его ставит публикация."""
     if not inputs:
@@ -109,6 +134,14 @@ def build_manifest(
         raise ValueError(f"steps: got {steps}, expected a positive number")
     if set(timings_sec) != set(TIMING_KEYS):
         raise ValueError(f"timings_sec: got {sorted(timings_sec)}, expected {sorted(TIMING_KEYS)}")
+    if degraded is not None:
+        if degraded.reason not in DEGRADED_REASONS:
+            raise ValueError(
+                f"degraded.reason: got {degraded.reason!r}, "
+                f"expected one of {', '.join(DEGRADED_REASONS)}"
+            )
+        if not degraded.waited_for:
+            raise ValueError("degraded.waited_for: деградация обязана назвать, чего не дождались")
 
     moment = created_at or datetime.now(UTC)
     return {
@@ -121,6 +154,13 @@ def build_manifest(
         "model": model._asdict(),
         "steps": steps,
         "timings_sec": {key: int(timings_sec[key]) for key in TIMING_KEYS},
+        # Ключ есть всегда, значение `null` у нормального прогона. Отсутствие
+        # ключа читатель отличить от «манифест написан старым кодом» не может,
+        # и «деградации не было» пришлось бы предполагать — ровно там, где
+        # предполагать нельзя.
+        "degraded": None
+        if degraded is None
+        else {**degraded._asdict(), "waited_for": list(degraded.waited_for)},
         "validation": validation,
         "published": False,
     }
