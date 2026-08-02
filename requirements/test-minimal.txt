@@ -15,6 +15,9 @@ dask[array]>=2025.1
 # приходят — API только читает Zarr (`tests/test_boundaries.py`).
 fastapi>=0.115
 httpx>=0.28
+# `make serve` и `make demo` должны работать после обычного `make venv`,
+# а не только в полном service-профиле.
+uvicorn>=0.34
 
 pytest>=8.3
 ruff>=0.9

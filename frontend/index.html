@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#dff2ff" />
+    <title>Aurora · прогноз погоды</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="sky" aria-hidden="true">
+      <span class="sun"></span>
+      <span class="cloud cloud-one"></span>
+      <span class="cloud cloud-two"></span>
+    </div>
+
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Aurora — главная">
+        <span class="brand-mark">A</span>
+        <span>Aurora</span>
+      </a>
+      <div class="connection" id="connection" role="status">
+        <span class="status-dot"></span>
+        <span>Проверяем прогноз…</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">ПРОГНОЗ AURORA · СЕТКА 0.25°</p>
+        <h1>Погода — числом<br />или в движении</h1>
+        <p class="lede">
+          Узнайте значение в точный момент или соберите GIF-карту на несколько дней.
+        </p>
+      </section>
+
+      <section class="weather-card" aria-labelledby="mode-title">
+        <div class="mode-tabs" role="tablist" aria-label="Формат прогноза">
+          <button class="mode-tab active" id="point-tab" type="button" role="tab"
+            aria-selected="true" aria-controls="point-panel">
+            <span class="tab-icon">12°</span>
+            Одно значение
+          </button>
+          <button class="mode-tab" id="animation-tab" type="button" role="tab"
+            aria-selected="false" aria-controls="animation-panel">
+            <span class="tab-icon play-icon">▶</span>
+            GIF-прогноз
+          </button>
+        </div>
+
+        <h2 class="sr-only" id="mode-title">Параметры прогноза</h2>
+
+        <form class="forecast-form" id="point-panel" role="tabpanel"
+          aria-labelledby="point-tab">
+          <div class="field-grid three">
+            <label>
+              <span>Широта</span>
+              <input id="point-lat" name="lat" type="number" min="-90" max="90"
+                step="0.01" value="55.75" required />
+            </label>
+            <label>
+              <span>Долгота</span>
+              <input id="point-lon" name="lon" type="number" min="-180" max="180"
+                step="0.01" value="37.62" required />
+            </label>
+            <label>
+              <span>Что показать</span>
+              <select id="point-var" name="var">
+                <option value="t2m">Температура</option>
+                <option value="wind">Скорость ветра</option>
+                <option value="msl">Давление</option>
+              </select>
+            </label>
+          </div>
+          <label class="wide-field">
+            <span>Дата и время</span>
+            <input id="point-time" name="time" type="datetime-local" required />
+          </label>
+          <button class="primary-button" id="point-submit" type="submit">
+            Показать значение
+          </button>
+        </form>
+
+        <form class="forecast-form hidden" id="animation-panel" role="tabpanel"
+          aria-labelledby="animation-tab" hidden>
+          <div class="field-grid two">
+            <label>
+              <span>Область карты</span>
+              <select id="animation-bbox" name="bbox">
+                <option value="41,19,61,48">Европейская часть России</option>
+                <option value="50,25,60,45">Москва и соседние регионы</option>
+                <option value="40,20,72,80">Восточная Европа</option>
+              </select>
+            </label>
+            <label>
+              <span>Слой</span>
+              <select id="animation-var" name="var">
+                <option value="t2m">Температура</option>
+                <option value="wind">Скорость ветра</option>
+                <option value="msl">Давление</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-grid two">
+            <label>
+              <span>Начало</span>
+              <input id="animation-from" name="from" type="datetime-local" required />
+            </label>
+            <label>
+              <span>Конец</span>
+              <input id="animation-to" name="to" type="datetime-local" required />
+            </label>
+          </div>
+          <p class="form-hint">Кадр каждые 6 часов, максимум 20 кадров.</p>
+          <button class="primary-button" id="animation-submit" type="submit">
+            Собрать GIF
+          </button>
+        </form>
+
+        <div class="result empty" id="result" aria-live="polite">
+          <div class="result-placeholder">
+            <span class="placeholder-icon">⌁</span>
+            <p>Результат появится здесь</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="facts" aria-label="О сервисе">
+        <article>
+          <span>01</span>
+          <div><strong>До 10 суток</strong><small>шаг прогноза 6 часов</small></div>
+        </article>
+        <article>
+          <span>02</span>
+          <div><strong>Честная точность</strong><small>показываем ближайший узел сетки</small></div>
+        </article>
+        <article>
+          <span>03</span>
+          <div><strong>Без облачных библиотек</strong><small>GIF создаётся в вашем браузере</small></div>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      <span>Aurora Weather API</span>
+      <a href="/v1/docs">Документация API ↗</a>
+    </footer>
+
+    <script src="/assets/gif.js"></script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

@@ -6,7 +6,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
 .DEFAULT_GOAL := help
-.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast validate test serve cache-report lint format
+.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast validate test serve demo cache-report lint format
 
 help:
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -39,6 +39,9 @@ test:  ## юнит- и контрактные тесты на фикстурах
 
 serve:  ## поднять API локально
 	$(VENV)/bin/uvicorn api.app:app --host 127.0.0.1 --port 8000
+
+demo:  ## поднять UI + API на локальном синтетическом прогнозе
+	$(PY) -m api.demo
 
 cache-report:  ## статистика кэша: занято, hit rate, топ вытеснений
 	$(PY) -m cache.report

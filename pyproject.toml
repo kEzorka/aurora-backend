@@ -9,7 +9,10 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["contracts", "adapters", "pipeline", "validators", "storage", "cache", "api"]
+packages = ["contracts", "adapters", "pipeline", "validators", "storage", "cache", "api", "frontend"]
+
+[tool.setuptools.package-data]
+frontend = ["*.html", "*.css", "*.js"]
 
 [tool.ruff]
 line-length = 100
@@ -33,7 +36,7 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 ignore_missing_imports = true
-exclude = ["^bench/"]
+exclude = ["^(bench|build)/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

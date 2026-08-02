@@ -16,7 +16,8 @@ from typing import Any, Final
 
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from api import fields
 from api import history as history_api
@@ -53,6 +54,10 @@ RETRY_AFTER_SEC: Final = 300
 #: сети вдвое более длинный заголовок в каждом запросе и ответе.
 ETAG_HEX: Final = 32
 
+#: Статический demo-клиент поставляется вместе с API: отдельный Node/build
+#: контур для трёх файлов был бы ещё одной точкой отказа при развёртывании.
+FRONTEND_DIR: Final = Path(__file__).resolve().parents[1] / "frontend"
+
 
 class ApiError(Exception):
     """Ошибка с кодом и телом по контракту (docs/API_CONTRACT.md §4).
@@ -76,6 +81,13 @@ def create_app(
         store / "cache", index_path=store / cache_index.INDEX_NAME
     )
     app = FastAPI(title="Aurora backend", version="1", docs_url="/v1/docs")
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="frontend-assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/demo", include_in_schema=False)
+    def demo() -> FileResponse:
+        """Минимальный клиент для проверки численного и сеточного API."""
+        return FileResponse(FRONTEND_DIR / "index.html")
 
     @app.exception_handler(ApiError)
     async def _handle(request: Request, error: ApiError) -> JSONResponse:
