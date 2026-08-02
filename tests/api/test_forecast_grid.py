@@ -80,6 +80,18 @@ def test_the_served_time_is_rounded_to_the_step_and_reported(client: TestClient)
     assert body["query"]["time"] == "2026-08-01T04:00:00Z"
 
 
+def test_the_edge_of_the_rounding_is_inside_the_coverage(client: TestClient) -> None:
+    """Граница округления — полшага за последним сроком. Слой кончается в 12:00,
+    значит 15:00 ещё округляется к нему, а 15:01 уже вне покрытия. Место, на
+    котором стоят лимиты 5.3, поэтому закреплено обеими сторонами."""
+    inside = client.get(GRID, params={"bbox": BOX, "var": "t2m", "time": "2026-08-01T15:00:00Z"})
+    outside = client.get(GRID, params={"bbox": BOX, "var": "t2m", "time": "2026-08-01T15:01:00Z"})
+
+    assert inside.status_code == 200
+    assert inside.json()["time"] == "2026-08-01T12:00:00Z"
+    assert outside.status_code == 404
+
+
 def test_wind_is_a_speed_here_too(client: TestClient) -> None:
     """`wind` — одна переменная ответа из двух полей на диске: ограничение
     «одна переменная на запрос» про `values`, а не про чтение."""
