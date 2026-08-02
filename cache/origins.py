@@ -26,7 +26,7 @@ import xarray as xr
 from adapters import era5_arco, era5_cds
 from adapters.errors import AdapterError, NotYetInSourceError
 from cache.chunks import encode
-from cache.proxy import Grid, NotYetError
+from cache.proxy import Grid, NotYetError, OriginError
 from contracts import canon
 
 #: Нарезка ARCO по времени: чанк — один час, и это его свойство, а не наш
@@ -98,6 +98,10 @@ class ArcoOrigin:
             # в `absent` на шесть часов: без этого один человек, листающий
             # календарь, устраивает поход в бакет на каждое движение.
             raise NotYetError(str(gap)) from gap
+        except Exception as failure:
+            raise OriginError(
+                f"ARCO не отдал {variable} за {moment.isoformat()}: {failure}"
+            ) from failure
         return encode(sliced)
 
     def _open(self) -> xr.Dataset:
@@ -235,7 +239,13 @@ class CdsOrigin:
             # только этот случай: остальные отказы адаптера — настоящие.
             if empty.field == "csv" and empty.got == "no rows":
                 raise NotYetError(f"{begins.isoformat()}..{ends.isoformat()}: {empty}") from empty
-            raise
+            raise OriginError(
+                f"CDS не отдал {name} за {begins.isoformat()}..{ends.isoformat()}: {empty}"
+            ) from empty
+        except Exception as failure:
+            raise OriginError(
+                f"CDS не отдал {name} за {begins.isoformat()}..{ends.isoformat()}: {failure}"
+            ) from failure
         return encode(series)
 
     def _ends(self, chunk: int) -> datetime:

@@ -266,7 +266,7 @@ def grid_window(
         if ny * nx > max_points:
             # Подсказка считается от неразреженного окна: пользователь подставит
             # её вместо своего `stride`, а не поверх него.
-            raise TooManyPointsError(ny * nx, max_points, _stride_under(full, max_points))
+            raise TooManyPointsError(ny * nx, max_points, stride_under(full, max_points))
 
         at = window.sel(time=stamp, method="nearest").transpose("lat", "lon").load()
         # Шаг берётся с полной оси, а не с выборки: у окна в одну строку
@@ -441,7 +441,7 @@ def _stamp(moment: str | None) -> np.datetime64 | None:
         raise UnsupportedError(f"time: got {moment!r}, expected ISO 8601") from error
 
 
-def _stride_under(shape: tuple[int, int], limit: int) -> int:
+def stride_under(shape: tuple[int, int], limit: int) -> int:
     """Наименьшее прореживание, при котором окно `shape` влезает в потолок.
 
     Считается перебором, а не формулой `sqrt(точек / потолок)`: прореженный

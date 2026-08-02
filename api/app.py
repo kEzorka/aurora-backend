@@ -9,6 +9,7 @@
 import hashlib
 import os
 from collections.abc import Sequence
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
@@ -18,6 +19,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api import fields
+from api import history as history_api
+from cache import history as history_cache
+from cache import index as cache_index
+from cache import origins as cache_origins
+from cache import proxy as cache_proxy
 from contracts import canon
 from storage import read
 
@@ -60,16 +66,25 @@ class ApiError(Exception):
         self.body: dict[str, Any] = {"error": error, "detail": detail, **extra}
 
 
-def create_app(root: str | Path | None = None) -> FastAPI:
+def create_app(
+    root: str | Path | None = None, *, history: history_api.History | None = None
+) -> FastAPI:
     """Собрать приложение над конкретным корнем хранилища."""
     store = Path(root if root is not None else os.environ.get(ROOT_ENV, DEFAULT_ROOT))
+    history_state = history or history_api.from_env(
+        store / "cache", index_path=store / cache_index.INDEX_NAME
+    )
     app = FastAPI(title="Aurora backend", version="1", docs_url="/v1/docs")
 
     @app.exception_handler(ApiError)
     async def _handle(request: Request, error: ApiError) -> JSONResponse:
         # `503` без `Retry-After` контракт не допускает (§4): клиент, которому
         # не сказали когда, вернётся либо через секунду, либо никогда.
-        headers = {"Retry-After": str(RETRY_AFTER_SEC)} if error.status == 503 else None
+        headers = None
+        if error.status == 503:
+            headers = {"Retry-After": str(RETRY_AFTER_SEC)}
+        elif error.status == 429:
+            headers = {"Retry-After": str(history_api.COLD_RETRY_SEC)}
         return JSONResponse(status_code=error.status, content=error.body, headers=headers)
 
     @app.exception_handler(RequestValidationError)
@@ -198,7 +213,7 @@ def create_app(root: str | Path | None = None) -> FastAPI:
         except read.UnsupportedError as error:
             raise ApiError(400, "bad_request", str(error)) from error
 
-        body = {
+        body: dict[str, Any] = {
             "query": {"bbox": list(box), "var": var, "time": time, "stride": stride},
             "source": FORECAST_SOURCE,
             "init_time": grid.init_time,
@@ -217,6 +232,188 @@ def create_app(root: str | Path | None = None) -> FastAPI:
             "values": field.compact(grid.values, units),
         }
         return _answer(request, body, grid.init_time)
+
+    @app.get("/v1/history/point")
+    def history_point(
+        request: Request,
+        lat: float,
+        lon: float,
+        vars: str = fields.DEFAULT_VARS,
+        start: str = Query(alias="from"),
+        to: str = Query(),
+        units: str = "human",
+        agg: str = history_api.RAW,
+    ) -> Response:
+        """Ряд ERA5 в точке с 1940 года (docs/API_CONTRACT.md §2)."""
+        if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
+            raise ApiError(400, "bad_point", f"lat/lon вне глобуса: {lat}, {lon}")
+        _check_units(units)
+        aggregation = _aggregation(agg)
+        wanted, names = _history_fields(vars)
+        first, last = _history_period(start, to, aggregation)
+
+        try:
+            cold = any(
+                cache_proxy.cold(
+                    history_state.series,
+                    cache_origins.at_point(name, lat, lon),
+                    first,
+                    last,
+                    root=history_state.root,
+                )
+                for name in names
+            )
+            with history_state.gate.hold(cold), closing(history_state.connect()) as conn:
+                result = history_cache.point_series(
+                    conn,
+                    history_state.series,
+                    names,
+                    lat,
+                    lon,
+                    first,
+                    last,
+                    root=history_state.root,
+                )
+                labels, values = history_api.series(
+                    wanted, result.values, result.times, aggregation, units
+                )
+                cache_index.log_query(
+                    conn,
+                    endpoint="/v1/history/point",
+                    area=f"{result.lat:g},{result.lon:g}",
+                    variable=",".join(field.name for field in wanted),
+                    start=start,
+                    stop=to,
+                    cache_hit=result.hit,
+                    latency_ms=result.origin_latency_ms,
+                )
+        except history_api.TooManyColdError as error:
+            raise ApiError(429, "too_many_cold", str(error)) from error
+        except cache_proxy.TooManyChunksError as error:
+            raise ApiError(413, "range_too_large", str(error)) from error
+        except cache_proxy.NotYetError as error:
+            raise ApiError(404, "out_of_coverage", str(error)) from error
+        except cache_proxy.OriginError as error:
+            raise ApiError(503, "origin_unavailable", str(error)) from error
+
+        body: dict[str, Any] = {
+            "query": {
+                "lat": lat,
+                "lon": lon,
+                "nearest_grid": {"lat": result.lat, "lon": result.lon},
+            },
+            "source": result.source,
+            "agg": aggregation,
+            "cache": {"hit": result.hit, "origin_latency_ms": result.origin_latency_ms},
+            "units": {field.name: field.unit(units) for field in wanted},
+            "times": list(labels),
+            "series": values,
+        }
+        if result.preliminary:
+            body["preliminary"] = True
+        return _history_answer(request, body, history_api.ttl(result.preliminary))
+
+    @app.get("/v1/history/grid")
+    def history_grid(
+        request: Request,
+        bbox: str,
+        var: str,
+        time: str,
+        stride: int = 1,
+        units: str = "human",
+        agg: str = history_api.RAW,
+    ) -> Response:
+        """Карта ERA5 за прошлый срок или сутки (docs/API_CONTRACT.md §2)."""
+        _check_units(units)
+        aggregation = _aggregation(agg, grid=True)
+        box = _bbox(bbox)
+        wanted, names = _history_fields(var)
+        if len(wanted) != 1:
+            raise ApiError(
+                400,
+                "too_many_vars",
+                f"var: одна переменная на запрос сетки, получено {len(wanted)}",
+            )
+        if stride < 1:
+            raise ApiError(400, "bad_stride", f"stride: получено {stride}, ожидалось >= 1")
+        moment = _moment(time)
+        if moment < _history_start():
+            raise ApiError(404, "out_of_coverage", f"{time}: история начинается в 1940 году")
+        first, last = history_api.span(moment, aggregation)
+        full = history_api.grid_shape(box)
+        if 0 in full:
+            raise ApiError(404, "out_of_coverage", f"bbox {bbox}: узлов сетки нет")
+        points = -(-full[0] // stride) * -(-full[1] // stride)
+        if points > read.MAX_POINTS:
+            suggested = read.stride_under(full, read.MAX_POINTS)
+            raise ApiError(
+                413,
+                "too_many_points",
+                f"точек {points}, потолок {read.MAX_POINTS}",
+                requested=points,
+                limit=read.MAX_POINTS,
+                hint=f"используйте stride >= {suggested} или уменьшите bbox",
+                suggested_stride=suggested,
+            )
+
+        try:
+            cold = any(
+                cache_proxy.cold(history_state.maps, name, first, last, root=history_state.root)
+                for name in names
+            )
+            with history_state.gate.hold(cold), closing(history_state.connect()) as conn:
+                result = history_cache.grid_window(
+                    conn,
+                    history_state.maps,
+                    names,
+                    box,
+                    first,
+                    last,
+                    root=history_state.root,
+                    stride=stride,
+                )
+                cache_index.log_query(
+                    conn,
+                    endpoint="/v1/history/grid",
+                    area=bbox,
+                    variable=wanted[0].name,
+                    start=result.first,
+                    stop=result.last,
+                    cache_hit=result.hit,
+                    latency_ms=result.origin_latency_ms,
+                )
+        except history_api.TooManyColdError as error:
+            raise ApiError(429, "too_many_cold", str(error)) from error
+        except cache_proxy.TooManyChunksError as error:
+            raise ApiError(413, "range_too_large", str(error)) from error
+        except cache_proxy.NotYetError as error:
+            raise ApiError(404, "out_of_coverage", str(error)) from error
+        except cache_proxy.OriginError as error:
+            raise ApiError(503, "origin_unavailable", str(error)) from error
+        except LookupError as error:
+            raise ApiError(404, "out_of_coverage", str(error)) from error
+
+        field = wanted[0]
+        body: dict[str, Any] = {
+            "query": {"bbox": list(box), "var": var, "time": time, "stride": stride},
+            "source": result.source,
+            "agg": aggregation,
+            "cache": {"hit": result.hit, "origin_latency_ms": result.origin_latency_ms},
+            "time": result.first,
+            "units": {field.name: field.unit(units)},
+            "grid": {
+                "lat0": result.lat0,
+                "lon0": result.lon0,
+                "dlat": result.dlat,
+                "dlon": result.dlon,
+                "shape": list(result.shape),
+                "order": "row-major",
+            },
+            "values": field.compact(result.values, units),
+        }
+        if result.preliminary:
+            body["preliminary"] = True
+        return _history_answer(request, body, history_api.ttl(result.preliminary))
 
     @app.get("/v1/meta/coverage")
     def meta_coverage(request: Request) -> Response:
@@ -290,6 +487,79 @@ def create_app(root: str | Path | None = None) -> FastAPI:
         return JSONResponse(content=body)
 
     return app
+
+
+def _check_units(units: str) -> None:
+    if units not in ("si", "human"):
+        raise ApiError(400, "bad_units", f"units: got {units!r}, expected 'si' or 'human'")
+
+
+def _aggregation(agg: str, *, grid: bool = False) -> str:
+    try:
+        return history_api.check_aggregation(agg, grid=grid)
+    except history_api.UnknownAggregationError as error:
+        raise ApiError(400, "bad_aggregation", str(error)) from error
+
+
+def _history_fields(names: str) -> tuple[tuple[fields.Field, ...], tuple[str, ...]]:
+    """Публичные поля истории и их канонические входы.
+
+    CDS timeseries не публикует уровни давления, а JSON-контракт не принимает
+    `level`. Отказ стоит до холодного запроса: очередь CDS не должна объяснять
+    клиенту ограничение нашей полосы доступа.
+    """
+    try:
+        wanted = fields.resolve(names)
+    except fields.UnknownFieldError as error:
+        raise ApiError(400, "bad_request", str(error)) from error
+    canonical = fields.canonical_names(wanted)
+    surface = set(canon.SURFACE_INGESTED_VARS)
+    unsupported = [name for name in canonical if name not in surface]
+    if unsupported:
+        raise ApiError(
+            400,
+            "bad_request",
+            f"vars: история на уровнях не поддерживается: {', '.join(unsupported)}",
+        )
+    return wanted, canonical
+
+
+def _history_start() -> datetime:
+    return datetime(canon.HISTORY_START_YEAR, 1, 1, tzinfo=UTC)
+
+
+def _history_period(start: str, stop: str, agg: str) -> tuple[datetime, datetime]:
+    first, last = _moment(start), _moment(stop)
+    if last < first:
+        raise ApiError(400, "bad_range", f"from > to: {start!r} > {stop!r}")
+    if first < _history_start():
+        raise ApiError(404, "out_of_coverage", f"{start}: история начинается в 1940 году")
+    if last > _plus_years(first, history_api.MAX_YEARS_POINT):
+        raise ApiError(
+            413,
+            "range_too_large",
+            f"период истории больше {history_api.MAX_YEARS_POINT} лет",
+        )
+    steps = history_api.step_count(first, last, agg)
+    if steps == 0:
+        raise ApiError(404, "out_of_coverage", f"{start}..{stop}: нет сроков {agg}")
+    if steps > read.MAX_STEPS:
+        raise ApiError(
+            413,
+            "too_many_steps",
+            f"шагов {steps}, потолок {read.MAX_STEPS}",
+            requested=steps,
+            limit=read.MAX_STEPS,
+        )
+    return first, last
+
+
+def _plus_years(moment: datetime, years: int) -> datetime:
+    """Календарная граница периода; 29 февраля превращается в 28 февраля."""
+    try:
+        return moment.replace(year=moment.year + years)
+    except ValueError:
+        return moment.replace(year=moment.year + years, day=28)
 
 
 def _described(name: str) -> dict[str, Any]:
@@ -393,7 +663,7 @@ def _moment(text: str) -> datetime:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as error:
         raise ApiError(400, "bad_time", f"time: got {text!r}, expected ISO 8601") from error
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _answer(request: Request, body: dict[str, Any], init_time: str) -> Response:
@@ -418,6 +688,17 @@ def _answer(request: Request, body: dict[str, Any], init_time: str) -> Response:
         # вопросом через секунду (RFC 9110 §15.4.5).
         return Response(status_code=304, headers=_cache_headers(init_time, tag))
     rendered.headers.update(_cache_headers(init_time, tag))
+    return rendered
+
+
+def _history_answer(request: Request, body: dict[str, Any], ttl: int) -> Response:
+    """История с фиксированным TTL: час для ERA5T, сутки для финального ERA5."""
+    rendered = JSONResponse(content=body)
+    tag = _etag(rendered.body)
+    headers = {"Cache-Control": f"public, max-age={ttl}", "ETag": tag}
+    if _unchanged(request.headers.get("if-none-match"), tag):
+        return Response(status_code=304, headers=headers)
+    rendered.headers.update(headers)
     return rendered
 
 
