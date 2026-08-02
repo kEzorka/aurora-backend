@@ -68,7 +68,9 @@ def build(
         chunks = (1, lat.size, lon.size)
 
     ds = xr.Dataset({name: (dims, values.astype(np.float32))}, coords=coords)
-    ds.to_zarr(path, mode="w", zarr_format=3, consolidated=False, encoding={name: {"chunks": chunks}})
+    ds.to_zarr(
+        path, mode="w", zarr_format=3, consolidated=False, encoding={name: {"chunks": chunks}}
+    )
     return path
 
 
