@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from cache.index import Key, entries, lookup, open_index, total_bytes
-from cache.proxy import Grid, Served, TooManyChunksError, align, moment, serve
+from cache.proxy import Grid, Served, TooManyChunksError, align, cold, moment, serve
 
 #: Сетка ARCO: чанк равен шагу времени (docs/CACHE.md §1). Предел маленький
 #: намеренно — на нём и проверяется отказ.
@@ -274,3 +274,37 @@ def test_the_price_of_a_download_is_measured(index: sqlite3.Connection, tmp_path
 
     assert served.origin_latency_ms == 500
     assert sorted(found.cost_ms for found in entries(index)) == [100, 400]
+
+
+def test_a_cold_period_is_seen_before_the_request(
+    index: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """Счётчик холодных запросов к истории (docs/API_CONTRACT.md §3, четыре
+    разом) обязан решать до похода наружу: после `serve` решать уже поздно.
+
+    Один недостающий чанк делает холодным весь период: наружу пойдут за ним, а
+    ждать в очереди будет весь запрос."""
+    origin = FakeOrigin()
+    _serve(index, origin, tmp_path, DAY, "1990-06-01T06:00:00Z")
+
+    assert cold(origin, "2t", moment(DAY), moment(DAY), root=tmp_path) is False
+    assert cold(origin, "2t", moment(DAY), moment("1990-06-01T12:00:00Z"), root=tmp_path) is True
+    assert cold(origin, "2t", moment(DAY), moment(DAY), root=tmp_path / "empty") is True
+
+
+def test_looking_for_a_cold_period_does_not_warm_it(
+    index: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """Смотреть на диск, а не в индекс — не экономия: `hit` двигает счётчики
+    доступа, по которым 3.3 решает, что вытеснять. Спрошенный дважды на каждый
+    запрос, он сделал бы историю вдвое «горячее», чем она есть."""
+    origin = FakeOrigin()
+    _serve(index, origin, tmp_path, DAY, DAY)
+    before = lookup(index, Key("era5", "2t", "era5-final", "v1", "73656"))
+
+    cold(origin, "2t", moment(DAY), moment(DAY), root=tmp_path)
+
+    after = lookup(index, Key("era5", "2t", "era5-final", "v1", "73656"))
+    assert before is not None and after is not None
+    assert (after.access_count, after.last_access) == (before.access_count, before.last_access)
+    assert origin.calls == [73656]

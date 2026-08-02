@@ -13,10 +13,8 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -24,10 +22,7 @@ from adapters.era5_arco import FINAL, FINAL_AFTER, PRELIMINARY
 from cache.index import Key, absent, open_index
 from cache.origins import CDS_GRID, CdsOrigin, at_point, split_point
 from cache.proxy import Grid, NotYetError, serve
-
-#: Москва, уже округлённая до узла сетки: тест сравнивает с числом, а не
-#: повторяет в себе `snap`.
-MOSCOW = (55.75, 37.5)
+from tests.fixtures.cds import MOSCOW, Service
 
 #: Нарезка на сутки вместо года. Мельче настоящей нарочно: год почасовых строк
 #: на чанк — это 8760 строк CSV в каждом тесте ради свойства, которое от длины
@@ -36,33 +31,6 @@ DAY_GRID = Grid(epoch=CDS_GRID.epoch, step=timedelta(hours=1), span=24, max_chun
 
 #: Секунды жизни индекса — к календарю данных отношения не имеют.
 CLOCK = 1_800_000_000.0
-
-
-class Service:
-    """Очередь CDS: отдаёт почасовые строки за спрошенный период.
-
-    Значение равно числу часов от начала суток запроса — по нему видно, какой
-    именно кусок ряда доехал до ответа, а какой обрезала обрезка периода.
-    """
-
-    def __init__(self, *, available: datetime | None = None) -> None:
-        self.available = available
-        self.requests: list[Mapping[str, Any]] = []
-
-    def __call__(self, dataset: str, request: Mapping[str, Any]) -> str:
-        self.requests.append(request)
-        first, _, last = str(request["date"][0]).partition("/")
-        start = datetime.fromisoformat(first).replace(tzinfo=UTC)
-        end = datetime.fromisoformat(last).replace(hour=23, tzinfo=UTC)
-        if self.available is not None:
-            end = min(end, self.available)
-        name = str(request["variable"][0])
-        lines = [f"valid_time,latitude,longitude,{name}"]
-        moment, hour = start, 0
-        while moment <= end:
-            lines.append(f"{moment:%Y-%m-%d %H:%M:%S},{MOSCOW[0]},{MOSCOW[1]},{250.0 + hour}")
-            moment, hour = moment + timedelta(hours=1), hour + 1
-        return "\n".join(lines[: 1 if len(lines) == 1 else None]) + "\n"
 
 
 @pytest.fixture

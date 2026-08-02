@@ -156,18 +156,23 @@ def grid_window(
 
     windows: list[xr.Dataset] = []
     hits, latency = True, 0
-    span: tuple[str, ...] = ()
+    moments: set[str] = set()
     for name in names:
         ds, served = _load(conn, origin, name, start, stop, root=root)
-        stamps = _stamps(ds["time"].values)
+        # Сроки собираются со всех полей, а не берутся у последнего: у карт ось
+        # общая по устройству источника, но растущий чанк ломает и это, и тогда
+        # `steps` описывал бы то поле, которое случайно оказалось в списке
+        # последним.
+        moments.update(_stamps(ds["time"].values))
         cut = ds.sel(lat=slice(north, south), lon=slice(west, east))
         cut = cut.isel(lat=slice(None, None, stride), lon=slice(None, None, stride))
         # Среднее по времени, а не по всем осям: `mean("time")` оставляет карту
         # картой. Пропуски выбрасываются (`skipna`), иначе один битый срок в
         # сутках делает пустой всю суточную карту.
         windows.append(cut[[name]].mean("time", skipna=True))
-        hits, latency, span = hits and served.hit, latency + served.origin_latency_ms, stamps
+        hits, latency = hits and served.hit, latency + served.origin_latency_ms
 
+    span = tuple(sorted(moments))
     merged = xr.merge(windows, combine_attrs="drop_conflicts")
     lats = np.asarray(merged["lat"].values, dtype=float)
     lons = np.asarray(merged["lon"].values, dtype=float)
