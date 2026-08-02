@@ -20,7 +20,7 @@ import xarray as xr
 from adapters import ecmwf, era5_grid
 from adapters.era5_arco import FINAL, PRELIMINARY
 from adapters.errors import AdapterError, NotYetInSourceError
-from adapters.plan import ERA5T_NAMES, ERA5T_STREAM
+from adapters.plan import ERA5T_NAMES, ERA5T_STREAM, TIME_FORMAT, plan
 from contracts import canon
 
 #: Срок карты и «сегодня» теста. Между ними двадцать суток: ERA5T с его пятью
@@ -226,6 +226,33 @@ def test_a_stranger_in_the_downloaded_file_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(AdapterError, match="sithick"):
         _read(service, tmp_path)
+
+
+@pytest.mark.slow
+def test_the_date_the_plan_asks_for_is_a_date_the_loader_accepts(tmp_path: Path) -> None:
+    """Шов между маршрутизацией и загрузкой. Отсчёт у них разный: `plan` отступает
+    на пять суток от срока прогона, а `read_map` — от «сейчас», и совпадают они
+    ровно на границе. Прогон на текущий срок — самый тесный случай: срок карты
+    равен горизонту, и отвергать его нельзя, иначе собственный план системы
+    неисполним в тот единственный момент, ради которого он и составлен."""
+    cycle = "2026-08-01T00:00:00Z"
+    (request,) = plan(cycle, ["ci"])
+    at = datetime.strptime(request.valid_time, TIME_FORMAT).replace(tzinfo=UTC)
+    service = _Service()
+
+    ice = era5_grid.read_map(
+        "ci",
+        at,
+        retriever=service.retrieve,
+        reader=service.reader,
+        target=tmp_path / "ice.grib",
+        now=datetime.strptime(cycle, TIME_FORMAT).replace(tzinfo=UTC),
+    )
+
+    assert at == MOMENT  # тот же срок, что у сообщения выше: сдвиг плана — пять суток
+    ((_, filed, _),) = service.requests
+    assert (filed["year"], filed["month"], filed["day"]) == (["2026"], ["07"], ["27"])
+    assert list(ice.data_vars) == ["ci"]
 
 
 def test_the_three_name_tables_say_the_same_thing() -> None:
