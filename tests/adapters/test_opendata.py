@@ -132,8 +132,8 @@ def test_a_field_missing_from_the_index_stops_the_download(tmp_path: Path) -> No
 
 
 def test_era5t_is_refused_rather_than_downloaded_empty(tmp_path: Path) -> None:
-    """CDS — это очередь и заявки, другой протокол целиком (BACKLOG 1.6).
-    Адрес Open Data для `ci` существует и отдаёт 404."""
+    """CDS — это очередь и заявки, другой протокол целиком, и `ci` качает
+    `adapters.era5_grid`. Адрес Open Data для `ci` существует и отдаёт 404."""
     (request,) = plan(MIDNIGHT, ["ci"])
 
     with pytest.raises(AdapterError, match="source"):
