@@ -34,6 +34,7 @@ LAYER_PATHS: Final[Mapping[str, str]] = MappingProxyType(
     {
         "coarse": "forecast/current/coarse",
         "hourly": "forecast/current/hourly",
+        "previous": "forecast/previous",
         "analysis": "analysis/recent",
     }
 )

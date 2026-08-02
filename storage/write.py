@@ -8,6 +8,7 @@
 """
 
 from pathlib import Path
+from typing import cast
 
 import xarray as xr
 
@@ -33,11 +34,31 @@ def write_layer(
         raise FileExistsError(f"{target}: слой уже записан, пишите в новый ключ")
 
     selected = select_layer(ds, layer)
-    selected.to_zarr(
+    encoding = encoding_for(selected, layout)
+    _align_chunks(selected, encoding).to_zarr(
         target,
         mode="w-",
         zarr_format=3,
         consolidated=True,
-        encoding=encoding_for(selected, layout),
+        encoding=encoding,
     )
     return target
+
+
+def _align_chunks(ds: xr.Dataset, encoding: dict[str, dict[str, object]]) -> xr.Dataset:
+    """Переразбить ленивый набор по границам шардов.
+
+    Набор, открытый из Zarr, приходит с чужими чанками, и шард, накрывающий
+    два dask-чанка, xarray писать отказывается: две задачи пишут один файл
+    шарда параллельно и затирают друг друга. Набор в памяти не трогаем —
+    у него чанков нет вовсе.
+    """
+    if not any(variable.chunks for variable in ds.data_vars.values()):
+        return ds
+    aligned = ds.copy()
+    for name, variable in ds.data_vars.items():
+        if variable.chunks is None:
+            continue
+        shards = cast(tuple[int, ...], encoding[str(name)]["shards"])
+        aligned[name] = variable.chunk(dict(zip(variable.dims, shards, strict=True)))
+    return aligned

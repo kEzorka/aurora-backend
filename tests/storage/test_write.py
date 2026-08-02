@@ -107,6 +107,16 @@ def test_shard_stays_a_multiple_of_the_chunk_after_clipping(tmp_path: Path) -> N
             assert shard % chunk == 0, layout.name
 
 
+def test_a_lazy_dataset_read_from_zarr_can_be_written_again(tmp_path: Path) -> None:
+    """Набор, открытый из Zarr, приходит с чужими чанками. Шард, накрывающий
+    два dask-чанка, xarray писать отказывается — так свёртка прошлого прогона
+    падала бы на каждой публикации."""
+    source = write_layer(_tiny(times=3), tmp_path / "source", TINY_LAYER)
+    with xr.open_zarr(source) as lazy:
+        copy = write_layer(lazy, tmp_path / "copy", TINY_LAYER)
+    np.testing.assert_allclose(xr.open_zarr(copy)["2t"].values, 288.0)
+
+
 def test_level_axis_is_chunked_one_level_at_a_time() -> None:
     """У поля на уровнях давления ось `level` есть, и чанк по ней всегда 1:
     запрос спрашивает уровень, а не все тринадцать."""

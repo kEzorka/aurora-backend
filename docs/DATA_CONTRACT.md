@@ -92,8 +92,8 @@
   "artifact": "forecast/2026-08-01T00Z",
   "created_at": "2026-08-01T08:14:03Z",
   "inputs": [
-    {"source": "ecmwf-opendata-ifs", "valid_time": "2026-07-31T18:00Z", "checksum": "sha256:..."},
-    {"source": "ecmwf-opendata-ifs", "valid_time": "2026-08-01T00:00Z", "checksum": "sha256:..."}
+    {"source": "ifs-analysis", "valid_time": "2026-07-31T18:00Z", "checksum": "sha256:..."},
+    {"source": "ifs-analysis", "valid_time": "2026-08-01T00:00Z", "checksum": "sha256:..."}
   ],
   "model": {"name": "aurora", "checkpoint": "aurora-0.25-v1.5", "revision": "..."},
   "steps": 40,
@@ -102,6 +102,18 @@
   "published": true
 }
 ```
+
+`inputs[].source` — значение из таблицы выше, а не имя потока скачивания
+(`ecmwf-opendata-ifs`): словарь провенанса один на весь сервис, иначе одно и то же
+происхождение в ответе API и в манифесте называется по-разному. Поток скачивания
+пишется отдельным полем, когда понадобится (`ADDENDUM-01` §1, задача 1.10).
+
+`timings_sec` — ровно четыре ключа: `ingest`, `normalize`, `inference`, `write`.
+Пропущенный этап неотличим от мгновенного, а по этим числам считаются метрики
+прогона (`BACKLOG.md` 6.2).
+
+`published` выставляется **последним** действием публикации, поверх уже записанного
+манифеста с `false`. Прерванный прогон оставляет `false`, а не полуправду.
 
 ---
 
