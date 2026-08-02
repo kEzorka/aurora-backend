@@ -12,14 +12,14 @@
 import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import Any, Final, NamedTuple
 
 import numpy as np
 import xarray as xr
 
 from contracts import canon
-from storage.manifest import MANIFEST_NAME, read_manifest
-from storage.publish import current_run
+from storage.manifest import MANIFEST_NAME, SKIP_NAME, read_manifest
+from storage.publish import RUNS_DIR, current_run
 
 #: Формат времени в ответе: ISO 8601 с `Z` (docs/API_CONTRACT.md, шапка).
 TIME_FORMAT: Final = "%Y-%m-%dT%H:%M:%SZ"
@@ -334,6 +334,83 @@ def coverage(run: str | Path) -> tuple[Span, ...]:
                 )
             )
     return tuple(spans)
+
+
+class RunState(NamedTuple):
+    """Строка журнала прогонов: что стало с одним циклом.
+
+    `state` — одно из `PUBLISHED` / `UNFINISHED` / `SKIPPED`. Три состояния, а
+    не два, потому что «прогона нет» бывает по двум разным причинам, и лечатся
+    они по-разному: пропуск — это решение, принятое расписанием и записанное
+    на диск, а незавершённый прогон — публикация, которую оборвали на середине.
+
+    `reason` заполнен только у пропуска: у остальных его неоткуда взять, и
+    выдуманное «ok» там читалось бы как проверенный факт.
+    """
+
+    run_id: str
+    state: str
+    init_time: str
+    reason: str | None
+
+
+PUBLISHED: Final = "published"
+UNFINISHED: Final = "unfinished"
+SKIPPED: Final = "skipped"
+
+
+def run_log(root: str | Path) -> tuple[RunState, ...]:
+    """Все прогоны на диске по возрастанию идентификатора.
+
+    Существует затем, чтобы пропуск было где увидеть. `coverage` и
+    `published_run` смотрят только на текущий прогон и по построению не могут
+    показать дырку: прогон, которого нет, из указателя `forecast/current` не
+    виден никак (docs/PIPELINE.md §3.5).
+    """
+    runs = Path(root) / RUNS_DIR
+    if not runs.is_dir():
+        return ()
+    log: list[RunState] = []
+    for run in sorted(runs.iterdir()):
+        if not run.is_dir():
+            continue
+        skip = run / SKIP_NAME
+        if skip.is_file():
+            record = read_manifest(skip)
+            log.append(
+                RunState(
+                    run_id=run.name,
+                    state=SKIPPED,
+                    init_time=str(record.get("init_time", "")),
+                    reason=str(record.get("reason", "")),
+                )
+            )
+            continue
+        manifest = run / MANIFEST_NAME
+        if not manifest.is_file():
+            continue
+        record = read_manifest(manifest)
+        log.append(
+            RunState(
+                run_id=run.name,
+                state=PUBLISHED if record.get("published") else UNFINISHED,
+                init_time=_init_time(record),
+                reason=None,
+            )
+        )
+    return tuple(log)
+
+
+def _init_time(manifest: Mapping[str, Any]) -> str:
+    """Срок прогона по его входам.
+
+    В манифесте своего `init_time` нет: он есть у каждого входа, и у входа с
+    переносом вперёд (`ci` из ERA5T) он чужой. Поэтому берётся самый поздний —
+    тот, на который прогон и посчитан (docs/DATA_CONTRACT.md §3).
+    """
+    inputs = manifest.get("inputs") or []
+    times = [str(entry.get("valid_time", "")) for entry in inputs]
+    return max(times) if times else ""
 
 
 def disk_usage(root: str | Path) -> tuple[int, int]:

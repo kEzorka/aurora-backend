@@ -25,6 +25,27 @@ TIMING_KEYS: Final = ("ingest", "normalize", "inference", "write")
 MANIFEST_NAME: Final = "manifest.json"
 VALIDATION_NAME: Final = "validation.json"
 
+#: Отметка о пропуске: прогон, которого не будет (docs/PIPELINE.md §3.5).
+#:
+#: Отдельный документ, а не манифест с пустыми полями. У пропущенного прогона
+#: нет ни артефакта, ни входов, ни шагов, ни таймингов, и провести его через
+#: `build_manifest` можно было бы только сняв с манифеста все проверки формы —
+#: то есть разрешив нулевые входы и нулевые шаги настоящим прогонам тоже.
+SKIP_NAME: Final = "skip.json"
+
+#: Почему прогона не будет. Набор закрыт: «не получилось» в отметке о пропуске
+#: отвечает ровно на тот вопрос, который и так был ясен, а разные причины
+#: требуют разного — источник молчит, значит ждать, а валидатор отверг срез,
+#: значит смотреть в отчёт.
+SKIP_REASONS: Final = (
+    # Ни ECMWF, ни GFS не отдали данные до дедлайна отката.
+    "no_input",
+    # Данные приехали, но не прошли валидаторы: публиковать нечего.
+    "invalid_input",
+    # Инференс не уложился в дедлайн публикации либо не дошёл до конца.
+    "no_forecast",
+)
+
 #: Формат времени в манифесте — ISO 8601 в UTC, секундная точность.
 TIME_FORMAT: Final = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -103,6 +124,62 @@ def build_manifest(
         "validation": validation,
         "published": False,
     }
+
+
+def build_skip(
+    artifact: str,
+    *,
+    init_time: str,
+    reason: str,
+    waited_for: Sequence[str],
+    deadline: str,
+    attempts: int,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Собрать отметку о пропуске прогона.
+
+    «Пропущенный прогон — нормальная ситуация, она должна быть видна, а не
+    замаскирована» (docs/PIPELINE.md §3.5). Видна она ровно тогда, когда
+    отвечает на три вопроса: какого прогона нет, почему и до каких пор ждали.
+
+    `waited_for` — потоки, которых не дождались, обычными строками. Хранилище
+    про адаптеры не знает (`tests/test_boundaries.py`), и подставляет их сюда
+    конвейер; пустой список означал бы «прогон пропущен, источники ни при чём»,
+    что для `no_input` неправда.
+
+    `attempts` — сколько раз попробовали. Ноль здесь честен и важен: он
+    отличает «источник молчал полтора часа» от «не пробовали вовсе, потому что
+    воркер лежал».
+    """
+    if reason not in SKIP_REASONS:
+        raise ValueError(f"reason: got {reason!r}, expected one of {', '.join(SKIP_REASONS)}")
+    if reason == "no_input" and not waited_for:
+        raise ValueError("waited_for: пропуск из-за источника обязан назвать источник")
+    if attempts < 0:
+        raise ValueError(f"attempts: got {attempts}, expected zero or more")
+
+    moment = created_at or datetime.now(UTC)
+    return {
+        "artifact": artifact,
+        "created_at": moment.astimezone(UTC).strftime(TIME_FORMAT),
+        "init_time": init_time,
+        "reason": reason,
+        "waited_for": list(waited_for),
+        "deadline": deadline,
+        "attempts": attempts,
+        # Не `published`: у пропуска нечего публиковать. Ключ назван иначе
+        # намеренно — совпади он с манифестом, отметка о пропуске прошла бы
+        # через `read_manifest` и `published_run` как прогон с `published: false`,
+        # то есть как оборванная публикация, а это другая история.
+        "skipped": True,
+    }
+
+
+def write_skip(path: str | Path, skip: Mapping[str, Any]) -> Path:
+    """Записать отметку о пропуске. Та же атомарность, что у манифеста."""
+    if not skip.get("skipped"):
+        raise ValueError("skipped: отметка о пропуске без флага пропуска — это не она")
+    return _dump(Path(path), skip)
 
 
 def write_manifest(path: str | Path, manifest: Mapping[str, Any]) -> Path:
