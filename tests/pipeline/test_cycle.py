@@ -37,6 +37,14 @@ def test_a_run_id_from_a_time_in_another_format_is_refused() -> None:
         run_id("2026-08-01 00:00")
 
 
+def test_a_run_id_for_an_hour_that_has_no_run_is_refused() -> None:
+    """`03Z` разбирается форматной строкой без ошибок и даёт каталог
+    `runs/2026-08-01T03Z`, которого не ждёт ни один другой компонент. Имя
+    каталога — то самое место, где неверный час остаётся навсегда."""
+    with pytest.raises(schedule.ScheduleError, match="init_time"):
+        run_id("2026-08-01T03:00:00Z")
+
+
 def test_a_missed_run_leaves_a_document_behind(tmp_path: Path) -> None:
     mark = skip_if_missed(
         tmp_path,

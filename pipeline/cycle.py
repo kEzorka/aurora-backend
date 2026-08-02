@@ -19,10 +19,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
-from pipeline.schedule import MISSED, TIME_FORMAT, Cycle, ScheduleError, phase
+from pipeline.schedule import MISSED, TIME_FORMAT, Cycle, cycle, phase
 from storage.manifest import MANIFEST_NAME, SKIP_NAME, build_skip, write_skip
 from storage.publish import run_path
 
@@ -35,8 +35,14 @@ ARTIFACT_PREFIX = "forecast/"
 
 
 def run_id(init_time: str) -> str:
-    """Имя каталога прогона по его сроку: `2026-08-01T00:00:00Z` → `2026-08-01T00Z`."""
-    return _parse(init_time).strftime(RUN_ID_FORMAT)
+    """Имя каталога прогона по его сроку: `2026-08-01T00:00:00Z` → `2026-08-01T00Z`.
+
+    Срок проверяется расписанием, а не форматной строкой: `03Z` разбирается
+    без ошибок и даёт каталог `runs/2026-08-01T03Z`, которого не ждёт ни один
+    другой компонент. Имя каталога — ровно то место, где неверный час
+    остаётся навсегда.
+    """
+    return _parse(cycle(init_time).init_time).strftime(RUN_ID_FORMAT)
 
 
 def artifact(init_time: str) -> str:
@@ -90,7 +96,6 @@ def skip_if_missed(
 
 
 def _parse(init_time: str) -> datetime:
-    try:
-        return datetime.strptime(init_time, TIME_FORMAT)
-    except ValueError as bad:
-        raise ScheduleError("init_time", init_time, TIME_FORMAT) from bad
+    """Срок, уже проверенный `cycle`. Время в UTC — как у соседа в
+    `pipeline.schedule`: наивное отсюда однажды уедет в сравнение и уедет молча."""
+    return datetime.strptime(init_time, TIME_FORMAT).replace(tzinfo=UTC)
