@@ -174,11 +174,23 @@ def read_amplification(layout: Chunking, request: tuple[int, int, int, int]) -> 
     выборка тянет все чанки, которых коснулась: ряд в точке по раскладке карт
     поднимает 1460 карт ради 1460 чисел — раздувание ×10⁶.
     """
+    return read_values(layout, request) / _product(request)
+
+
+def read_values(layout: Chunking, request: tuple[int, int, int, int]) -> int:
+    """Сколько логических значений распакуют чанки для выборки ``request``.
+
+    Отдельное целое число нужно отчёту 2.7: умножение коэффициента с плавающей
+    точкой обратно на размер запроса способно дать байт меньше из-за округления.
+    Нулевая ось — ошибка вызывающего, а не бесплатный запрос.
+    """
+    if len(request) != 4 or any(wanted <= 0 for wanted in request):
+        raise ValueError(f"request: expected four positive axes, got {request}")
     touched = 1
     for axis, wanted in enumerate(request):
         chunk = layout.chunk[axis]
         touched *= -(-wanted // chunk) * chunk
-    return touched / _product(request)
+    return touched
 
 
 def layer_path(root: str | Path, layer: str) -> Path:

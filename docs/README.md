@@ -62,6 +62,7 @@
 | `make serve` | поднять API локально |
 | `make demo` | поднять UI и тот же API на синтетическом прогнозе без сети/GPU |
 | `make cache-report` | статистика кэша: занято, hit rate, топ вытеснений |
+| `make storage-amplification` | таблица раздувания чтения раскладок maps/series |
 
 ---
 

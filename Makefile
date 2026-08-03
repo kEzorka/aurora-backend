@@ -6,7 +6,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
 .DEFAULT_GOAL := help
-.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast validate test serve demo cache-report lint format
+.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast validate test serve demo cache-report storage-amplification lint format
 
 help:
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -45,6 +45,9 @@ demo:  ## поднять UI + API на локальном синтетическ
 
 cache-report:  ## статистика кэша: занято, hit rate, топ вытеснений
 	$(PY) -m cache.report
+
+storage-amplification:  ## таблица логического раздувания чтения для раскладок A/B
+	$(PY) -m storage.amplification
 
 lint:  ## ruff + mypy
 	$(VENV)/bin/ruff check .
