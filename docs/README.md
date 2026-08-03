@@ -57,6 +57,7 @@
 | `make ingest-analysis` | скачать и нормализовать последний доступный анализ |
 | `make ingest-era5 FROM=.. TO=..` | дозалив истории за период |
 | `make forecast INIT=..` | поставить в очередь инференс на указанный `init_time` |
+| `make metrics FORECAST=.. TRUTH=.. CLIMATOLOGY=.. VAR=.. INIT=..` | RMSE/ACC и два baseline |
 | `make validate` | прогнать валидаторы по последнему записанному срезу |
 | `make test` | юнит- и контрактные тесты на фикстурах, без сети |
 | `make serve` | поднять API локально |

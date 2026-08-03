@@ -6,7 +6,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
 .DEFAULT_GOAL := help
-.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast validate test serve demo cache-report storage-amplification lint format
+.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast metrics validate test serve demo cache-report storage-amplification lint format
 
 help:
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -30,6 +30,9 @@ history-monthly:  ## pinned-средние: make history-monthly ROOT=/data/auro
 
 forecast:  ## поставить в очередь инференс: make forecast INIT=2026-08-01T00Z
 	$(PY) -m pipeline.enqueue --init "$(INIT)"
+
+metrics:  ## RMSE/ACC: make metrics FORECAST=... TRUTH=... CLIMATOLOGY=... VAR=2t INIT=...
+	$(PY) -m pipeline.metrics "$(FORECAST)" "$(TRUTH)" "$(CLIMATOLOGY)" --var "$(VAR)" --init "$(INIT)"
 
 validate:  ## прогнать валидаторы по последнему записанному срезу
 	$(PY) -m validators.cli --latest
