@@ -1,14 +1,18 @@
 """Вход Aurora: ровно два срока, канонический порядок и официальная статика."""
 
+from __future__ import annotations
+
 import pickle
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
 import xarray as xr
 
 from contracts import canon
-from pipeline.state import State, assemble_state, load_static
+from pipeline.state import State, assemble_state, load_static, to_aurora_batch
 
 LAT = np.array([1.0, 0.0], dtype=np.float32)
 LON = np.array([10.0, 10.25, 10.5], dtype=np.float32)
@@ -104,3 +108,39 @@ def test_static_loader_rejects_non_mapping_and_accepts_a_mapping(tmp_path: Path)
     assert len(load_static(valid)) == 36
     with pytest.raises(ValueError, match="mapping"):
         load_static(invalid)
+
+
+class FakeTensor:
+    def __init__(self, values: object) -> None:
+        self.values = np.asarray(values)
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.values.shape
+
+    def unsqueeze(self, axis: int) -> FakeTensor:
+        self.values = np.expand_dims(self.values, axis)
+        return self
+
+    def contiguous(self) -> FakeTensor:
+        return self
+
+
+def test_state_becomes_the_real_batch_shape_without_service_imports() -> None:
+    torch = SimpleNamespace(from_numpy=FakeTensor, as_tensor=FakeTensor)
+    aurora = SimpleNamespace(
+        Metadata=lambda **values: SimpleNamespace(**values),
+        Batch=lambda **values: SimpleNamespace(**values),
+    )
+
+    batch: Any = to_aurora_batch(_assemble(), torch_module=torch, aurora_module=aurora)
+
+    assert batch.surf_vars["2t"].shape == (1, 2, 2, 3)
+    assert batch.atmos_vars["t"].shape == (1, 2, 13, 2, 3)
+    assert "scaled_sd" in batch.surf_vars
+    assert "sd" not in batch.surf_vars
+    assert len(batch.static_vars) == 36
+    assert batch.metadata.lat.shape == (2,)
+    assert batch.metadata.lon.shape == (3,)
+    assert batch.metadata.atmos_levels == canon.PRESSURE_LEVELS
+    assert batch.metadata.time[0].isoformat() == "2026-08-03T00:00:00"

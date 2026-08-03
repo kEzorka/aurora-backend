@@ -10,10 +10,12 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import pickle
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 import xarray as xr
@@ -26,6 +28,47 @@ class State(NamedTuple):
     atmosphere: Mapping[str, xr.DataArray]
     static: Mapping[str, object]
     init_time: str
+
+
+def to_aurora_batch(
+    state: State,
+    *,
+    torch_module: Any | None = None,
+    aurora_module: Any | None = None,
+) -> object:
+    """Преобразовать проверенный state в inference-only ``aurora.Batch``.
+
+    Imports are lazy so the service environment remains free of Torch.  The
+    leading batch axis is a view; ``from_numpy`` shares the global arrays
+    instead of doubling roughly 750 MB of input memory.
+    """
+    torch_api: Any = importlib.import_module("torch") if torch_module is None else torch_module
+    aurora_api: Any = importlib.import_module("aurora") if aurora_module is None else aurora_module
+
+    def history(field: xr.DataArray) -> object:
+        values = np.asarray(field.values, dtype=np.float32)
+        return torch_api.from_numpy(values).unsqueeze(0).contiguous()
+
+    surface = {
+        canon.AURORA_SURFACE_NAMES.get(name, name): history(field)
+        for name, field in state.surface.items()
+    }
+    atmosphere = {name: history(field) for name, field in state.atmosphere.items()}
+    static = {name: torch_api.as_tensor(value) for name, value in state.static.items()}
+    first = next(iter(state.surface.values()))
+    metadata = aurora_api.Metadata(
+        lat=torch_api.from_numpy(np.asarray(first["lat"].values)),
+        lon=torch_api.from_numpy(np.asarray(first["lon"].values)),
+        time=(_naive_time(state.init_time),),
+        atmos_levels=canon.PRESSURE_LEVELS,
+    )
+    batch: object = aurora_api.Batch(
+        surf_vars=surface,
+        static_vars=static,
+        atmos_vars=atmosphere,
+        metadata=metadata,
+    )
+    return batch
 
 
 def assemble_state(
@@ -127,6 +170,13 @@ def _iso(text: str) -> str:
     except ValueError as error:
         raise ValueError(f"init_time: invalid ISO 8601 {text!r}") from error
     return str(value)
+
+
+def _naive_time(text: str) -> datetime:
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError as error:
+        raise ValueError(f"init_time: invalid ISO 8601 {text!r}") from error
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI
