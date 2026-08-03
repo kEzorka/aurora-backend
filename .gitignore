@@ -33,3 +33,6 @@ artifacts/*
 .ruff_cache/
 *.egg-info/
 build/
+
+# Изолированные рабочие деревья агентов; содержимое — полноценные checkout.
+.worktrees/
