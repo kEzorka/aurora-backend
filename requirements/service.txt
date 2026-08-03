@@ -13,6 +13,7 @@ cfgrib>=0.9.14
 eccodes>=2.38
 
 ecmwf-opendata>=0.3.19
+earthkit-data
 herbie-data>=2024.8
 cdsapi>=0.7.5
 
@@ -24,6 +25,9 @@ pyarrow>=19.0
 fastapi>=0.115
 uvicorn[standard]>=0.34
 pydantic>=2.10
+xpublish
+virtualizarr
+icechunk
 apscheduler>=3.11
 
 structlog>=25.1

@@ -24,7 +24,16 @@ WARN: Final = "warn"
 FAIL: Final = "fail"
 ROLES: Final = ("service", "inference", "all")
 SERVICE_PACKAGES: Final = ("numpy", "xarray", "zarr", "fastapi", "uvicorn")
-OPTIONAL_SERVICE_PACKAGES: Final = ("cfgrib", "eccodes", "gcsfs", "cdsapi")
+OPTIONAL_SERVICE_PACKAGES: Final = (
+    "cfgrib",
+    "eccodes",
+    "gcsfs",
+    "cdsapi",
+    "earthkit-data",
+    "xpublish",
+    "virtualizarr",
+    "icechunk",
+)
 
 
 @dataclass(frozen=True)

@@ -24,12 +24,25 @@ def test_service_core_is_green_without_importing_optional_packages(tmp_path: Pat
         home=tmp_path,
         env={"AURORA_ROOT": str(tmp_path)},
         python=(3, 12),
-        version=_versions({"cfgrib", "eccodes", "gcsfs", "cdsapi"}),
+        version=_versions(
+            {
+                "cfgrib",
+                "eccodes",
+                "gcsfs",
+                "cdsapi",
+                "earthkit-data",
+                "xpublish",
+                "virtualizarr",
+                "icechunk",
+            }
+        ),
     )
 
     assert _status(checks, "python") == OK
     assert _status(checks, "zarr-format") == OK
     assert _status(checks, "optional:cfgrib") == WARN
+    assert _status(checks, "optional:xpublish") == WARN
+    assert _status(checks, "optional:virtualizarr") == WARN
     assert _status(checks, "cds-credentials") == OK
 
 
