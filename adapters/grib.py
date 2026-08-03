@@ -23,3 +23,23 @@ def open_message(path: Path | str) -> xr.Dataset:
         engine="cfgrib",
         backend_kwargs={"indexpath": "", "read_keys": list(MESSAGE_KEYS)},
     )
+
+
+def open_messages(path: Path | str) -> tuple[xr.Dataset, ...]:
+    """Открыть неоднородный GRIB, сгруппировав совместимые сообщения.
+
+    Один оперативный range-download содержит приземные поля и тринадцать
+    уровней сразу. ``xr.open_dataset`` выбирает только одну совместимую
+    группу; ``cfgrib.open_datasets`` возвращает их все, после чего адаптер
+    объединяет уже канонические группы.
+    """
+    # cfgrib/eccodes is optional on the service/test laptop and is imported
+    # only at the operational GRIB boundary (docs/SETUP.md §4).
+    import cfgrib
+
+    return tuple(
+        cfgrib.open_datasets(
+            path,
+            backend_kwargs={"indexpath": "", "read_keys": list(MESSAGE_KEYS)},
+        )
+    )

@@ -114,3 +114,35 @@ def read_message(
     )
     with grib.open_message(path) as ds:
         return to_canonical(ds, renames=RENAMES, scales=SCALES, provenance=provenance)
+
+
+def read_messages(
+    path: Path | str,
+    *,
+    source_url: str,
+    retrieved_at: str,
+    kind: str = "analysis",
+) -> xr.Dataset:
+    """Все совместимые группы одного отобранного GRIB → один канон."""
+    provenance = Provenance(
+        source=SOURCE,
+        source_url=source_url,
+        retrieved_at=retrieved_at,
+        adapter_version=ADAPTER_VERSION,
+        kind=kind,
+    )
+    groups = grib.open_messages(path)
+    try:
+        canonical = [
+            to_canonical(group, renames=RENAMES, scales=SCALES, provenance=provenance)
+            for group in groups
+        ]
+        if not canonical:
+            raise ValueError(f"{path}: GRIB has no readable message groups")
+        # Load before closing cfgrib's file-backed groups.  The operational
+        # caller may keep the canonical Dataset after the raw file handle is
+        # gone, and a lazy array there would fail much later in validation.
+        return xr.merge(canonical, compat="no_conflicts", combine_attrs="override").load()
+    finally:
+        for group in groups:
+            group.close()

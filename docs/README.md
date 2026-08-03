@@ -54,8 +54,8 @@
 | Цель | Что делает |
 |---|---|
 | `make setup` | проверка окружения: ключи, доступность источников, версии, наличие GPU |
-| `make ingest-analysis` | скачать и нормализовать последний доступный анализ |
-| `make ingest-era5 FROM=.. TO=..` | дозалив истории за период |
+| `make ingest-analysis INIT=.. ROOT=..` | собрать два срока и атомарно обновить `analysis/recent` |
+| `make ingest-era5 FROM=.. TO=.. ROOT=..` | материализовать финальные месячные средние ERA5 |
 | `make forecast INIT=..` | поставить в очередь инференс на указанный `init_time` |
 | `make metrics FORECAST=.. TRUTH=.. CLIMATOLOGY=.. VAR=.. INIT=..` | RMSE/ACC и два baseline |
 | `make timing-report MANIFEST=..` | сверить четыре этапа манифеста с окном цикла |

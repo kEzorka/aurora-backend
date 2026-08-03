@@ -9,7 +9,7 @@ PIP := $(VENV)/bin/pip
 .PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast metrics timing-report validate test serve demo cache-report storage-amplification lint format
 
 help:
-	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-18s %s\n", $$1, $$2}'
+	@grep -hE '^[a-z0-9-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-18s %s\n", $$1, $$2}'
 
 venv:  ## создать venv и поставить зависимости для тестов
 	uv venv --python 3.12 $(VENV)
@@ -19,11 +19,11 @@ venv:  ## создать venv и поставить зависимости дл�
 setup:  ## проверка окружения: ключи, доступность источников, версии, наличие GPU
 	$(PY) -m pipeline.setup_check
 
-ingest-analysis:  ## скачать и нормализовать последний доступный анализ
-	$(PY) -m pipeline.ingest --kind analysis
+ingest-analysis:  ## скачать и нормализовать анализ: make ingest-analysis INIT=... ROOT=...
+	$(PY) -m pipeline.ingest --kind analysis $(if $(INIT),--init "$(INIT)") $(if $(ROOT),--root "$(ROOT)")
 
 ingest-era5:  ## дозалив истории: make ingest-era5 FROM=1990-01-01 TO=1990-12-31
-	$(PY) -m pipeline.ingest --kind era5 --from "$(FROM)" --to "$(TO)"
+	$(PY) -m pipeline.ingest --kind era5 --from "$(FROM)" --to "$(TO)" $(if $(ROOT),--root "$(ROOT)")
 
 history-monthly:  ## pinned-средние: make history-monthly ROOT=/data/aurora FROM=1940-01-01 TO=2026-04-30T23:00Z
 	$(PY) -m pipeline.monthly --root "$(ROOT)" --from "$(FROM)" --to "$(TO)"

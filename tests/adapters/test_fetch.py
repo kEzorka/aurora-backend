@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from adapters.errors import AdapterError
-from adapters.fetch import Response, fetch_ranges, fetch_to_file
+from adapters.fetch import Response, checksum_tree, fetch_ranges, fetch_to_file
 from adapters.index import Range
 
 DELAYS = (1.0, 2.0, 4.0)
@@ -199,3 +199,20 @@ def test_a_failed_download_leaves_no_file_behind(tmp_path: Path) -> None:
         )
 
     assert not path.exists()
+
+
+def test_tree_checksum_includes_relative_names_and_bytes(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    for root in (first, second):
+        (root / "c").mkdir(parents=True)
+        (root / "c" / "0").write_bytes(b"same bytes")
+
+    assert checksum_tree(first, block=2) == checksum_tree(second, block=100)
+    (second / "c" / "0").rename(second / "c" / "1")
+    assert checksum_tree(first) != checksum_tree(second)
+
+
+def test_tree_checksum_rejects_an_empty_directory(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="no files"):
+        checksum_tree(tmp_path)

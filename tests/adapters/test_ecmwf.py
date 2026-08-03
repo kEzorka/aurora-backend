@@ -10,6 +10,7 @@ pytest.importorskip("cfgrib", reason="cfgrib тянет бинарный eccodes
 import xarray as xr
 
 from adapters import ecmwf
+from adapters.fetch import write_messages
 from contracts import canon
 
 GRIB = Path(__file__).resolve().parents[1] / "fixtures" / "grib"
@@ -66,3 +67,20 @@ def test_provenance_says_what_it_is() -> None:
     assert ds.attrs["source"] == "ifs-analysis"
     assert ds.attrs["kind"] == "analysis"
     assert ds.attrs["adapter_version"] == ecmwf.ADAPTER_VERSION
+
+
+def test_a_multi_message_download_keeps_every_compatible_group(tmp_path: Path) -> None:
+    combined = write_messages(
+        tmp_path / "analysis.grib2",
+        (
+            (GRIB / "ecmwf_2t_6h.grib2").read_bytes(),
+            (GRIB / "ecmwf_t850_6h.grib2").read_bytes(),
+        ),
+    )
+
+    ds = ecmwf.read_messages(combined, source_url="test://combined", retrieved_at=RETRIEVED)
+
+    assert set(ds.data_vars) == {"2t", "t"}
+    assert ds["2t"].dims == ("time", "lat", "lon")
+    assert ds["t"].dims == ("time", "level", "lat", "lon")
+    assert ds["t"]["level"].values.tolist() == [850]

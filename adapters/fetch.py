@@ -134,6 +134,30 @@ def checksum(path: str | Path, *, block: int = CHECKSUM_BLOCK) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def checksum_tree(path: str | Path, *, block: int = CHECKSUM_BLOCK) -> str:
+    """Сумма каталога source-native Zarr: относительные имена плюс байты.
+
+    Одних байтов недостаточно: два чанка, переставленные местами, имеют тот
+    же конкатенированный поток, но описывают другое поле. Метаданные и имена
+    входят в digest в детерминированном порядке.
+    """
+    root = Path(path)
+    if not root.is_dir():
+        raise ValueError(f"{root}: expected a directory")
+    digest = hashlib.sha256()
+    files = sorted(candidate for candidate in root.rglob("*") if candidate.is_file())
+    if not files:
+        raise ValueError(f"{root}: directory has no files")
+    for candidate in files:
+        relative = candidate.relative_to(root).as_posix().encode()
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        with candidate.open("rb") as data:
+            while chunk := data.read(block):
+                digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
+
+
 def fetch_ranges(
     url: str,
     wanted: Sequence[Range],
