@@ -6,7 +6,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
 .DEFAULT_GOAL := help
-.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast metrics validate test serve demo cache-report storage-amplification lint format
+.PHONY: help venv setup ingest-analysis ingest-era5 history-monthly forecast metrics timing-report validate test serve demo cache-report storage-amplification lint format
 
 help:
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -33,6 +33,9 @@ forecast:  ## поставить в очередь инференс: make foreca
 
 metrics:  ## RMSE/ACC: make metrics FORECAST=... TRUTH=... CLIMATOLOGY=... VAR=2t INIT=...
 	$(PY) -m pipeline.metrics "$(FORECAST)" "$(TRUTH)" "$(CLIMATOLOGY)" --var "$(VAR)" --init "$(INIT)"
+
+timing-report:  ## бюджет цикла из manifest.json: make timing-report MANIFEST=...
+	$(PY) -m pipeline.timing "$(MANIFEST)"
 
 validate:  ## прогнать валидаторы по последнему записанному срезу
 	$(PY) -m validators.cli --latest
