@@ -42,7 +42,8 @@ python -m validators.cli path/to/forecast.zarr  # или конкретный
 ## Разработка
 
 ```bash
-make setup     # venv + зависимости сервиса и разработки
+make venv      # venv + минимальные зависимости разработки
+make setup     # диагностика service-окружения без вывода секретов
 make test      # pytest, без сети и без GPU
 make lint      # ruff + mypy strict
 ```
