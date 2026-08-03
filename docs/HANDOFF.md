@@ -9,6 +9,10 @@
 Это не замена остальным документам, а вход в них. Всё, что здесь сжато до
 абзаца, в `docs/` расписано подробно, и ссылки на нужное место даны везде.
 
+> **Актуализация после автономного продолжения.** Разделы про PR и старый
+> порядок задач ниже сохранены как история передачи. Текущее состояние задают
+> §0, §13, `docs/PROGRESS.md` и код. Никаких remote merge/push не выполнялось.
+
 ---
 
 ## 0. Тридцать секунд
@@ -16,10 +20,10 @@
 | Что | Где |
 |---|---|
 | Репозиторий | `https://github.com/kEzorka/aurora-backend.git` |
-| Основная ветка | `master` (последний коммит `38bd329`) |
+| Основная ветка | `master`; её remote-состояние в этой локальной сессии не обновлялось |
 | Текущая рабочая ветка | `codex/backend-continuation` (локальная, не публиковалась) |
 | PR по прежнему снимку | **#2** (`adapters/era5-cds`), **#3** (`adapters/era5-grid`); актуальный remote-статус не проверялся |
-| Что сделано последним | 5.5 и код 2.5 готовы; demo frontend завершён; финальная проверка пройдена |
+| Что сделано последним | analysis ingest, durable queue/export, Batch boundary, метрики, timing/report и demo frontend |
 | Общий статус | `docs/PROGRESS.md` — обновляется коммитом при каждом закрытом пункте |
 | Список задач с критериями приёмки | `docs/BACKLOG.md` |
 | Запустить проверки | `make venv && make lint && make test` |
@@ -263,7 +267,7 @@ docs/          требования и решения
 | 5. API | P0 закрыт, включая **5.5**; открыты 5.8, 5.9, 5.10 |
 | 6. Приёмка | не начата |
 
-Текущие цифры: **571 тест** (`pytest`, без сети и GPU) — все
+Текущие цифры после продолжения: **633 теста** (`pytest`, без сети и GPU) — все
 проходят, пропущенных нет; `ruff`, `ruff format`, `mypy` — чисто.
 
 Мелочь, на которую уходит полчаса при первом запуске: в `pyproject.toml`
@@ -568,7 +572,46 @@ JS-файлов, заголовок/терминатор GIF и наличие �
 пуст), поэтому визуальный responsive/click-through следует повторить вручную.
 
 Финальный локальный gate: Ruff, `ruff format --check`, strict mypy и все
-**571 тест** прошли; wheel успешно собран через `uv build --wheel`.
+**633 теста** прошли; wheel успешно собран через `uv build --wheel`.
 
 Удалённый сервер не инспектировался и не изменялся: активный профиль разрешал
 работу только в локальном checkout. Ветка не публиковалась.
+
+## 13. Продолжение backend после frontend
+
+После снимка §11–12 выполнены следующие независимые рубежи:
+
+| Коммит | Результат |
+|---|---|
+| `5ffa890` | воспроизводимый отчёт read amplification maps/series |
+| `85e0da3` | durable SQLite inference queue, lease, idempotent `make forecast` |
+| `9ea1071` | честная setup-диагностика service/inference |
+| `7bae757` | канонический state, RMSE/ACC, persistence и climatology |
+| `d014ced` | `POST /v1/export`, SQLite worker, ZIP/Zarr, quota, TTL и `410` |
+| `6dce31b` | отчёт бюджета цикла из четырёх таймингов манифеста |
+| `28dd3fe` | двухсрочный operational ingest и атомарный `analysis/recent` |
+| `94e2cd3` | zero-copy граница проверенного state → `aurora.Batch/Metadata` |
+| `09a3757` | service-профиль и диагностика внешних P1-интеграций |
+
+Полный локальный gate после них: Ruff, format-check, strict mypy и **633
+теста** успешны; wheel `aurora_backend-0.1.0-py3-none-any.whl` собран через
+`uv build --wheel`. `make setup` даёт 11 ok, 8 warning, 0 failed: предупреждения
+относятся к `gcsfs`, `cdsapi`, earthkit, xpublish, VirtualiZarr, Icechunk,
+CDS credentials и production storage root.
+
+### Что реально осталось
+
+1. На CUDA-узле установить inference-профиль, проверить конкретную сигнатуру
+   `AuroraV1p5`/`fine_lead_times`, реализовать rollout writer и снять 4.2/4.7/4.8,
+   текущие RMSE/ACC и тайминги. Локально нет Torch, Aurora и CUDA.
+2. В полном service-профиле подключить xpublish и его manifest plugin, затем
+   доказать `xr.open_zarr(http://...)`. Пакета локально нет; самодельная
+   статическая раздача намеренно не выдана за xpublish.
+3. На настоящих ECMWF/ERA5 выполнить network acceptance ingest, собрать
+   `history/monthly` 1940–now и измерить объём. Локально нет `gcsfs`/CDS access.
+4. VirtualiZarr/Icechunk принять побайтовым сравнением настоящего ECMWF/ERA5;
+   GFS через виртуальный manifest запрещён контрактом.
+5. В доверенном production-контуре вручную проверить отключение GPU/сети.
+
+Это внешние проверки, а не скрытые TODO локального кода. Они перечислены в
+`docs/PROGRESS.md` без ложного статуса «готово».
