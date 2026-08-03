@@ -8,8 +8,8 @@
 
 import hashlib
 import os
-from collections.abc import Sequence
-from contextlib import closing
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager, closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
@@ -18,8 +18,9 @@ from fastapi import FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
-from api import fields
+from api import exports, fields
 from api import history as history_api
 from cache import history as history_cache
 from cache import index as cache_index
@@ -59,6 +60,17 @@ ETAG_HEX: Final = 32
 FRONTEND_DIR: Final = Path(__file__).resolve().parents[1] / "frontend"
 
 
+class ExportRequest(BaseModel):
+    """Forecast subset for lane 3; variable names are canonical storage names."""
+
+    vars: list[str]
+    bbox: tuple[float, float, float, float]
+    start: str = Field(alias="from")
+    to: str
+    stride: int = 1
+    format: str = "zarr"
+
+
 class ApiError(Exception):
     """Ошибка с кодом и телом по контракту (docs/API_CONTRACT.md §4).
 
@@ -77,10 +89,21 @@ def create_app(
 ) -> FastAPI:
     """Собрать приложение над конкретным корнем хранилища."""
     store = Path(root if root is not None else os.environ.get(ROOT_ENV, DEFAULT_ROOT))
+    export_manager = exports.ExportManager(store)
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        export_manager.start()
+        try:
+            yield
+        finally:
+            export_manager.stop()
+
     history_state = history or history_api.from_env(
         store / "cache", index_path=store / cache_index.INDEX_NAME
     )
-    app = FastAPI(title="Aurora backend", version="1", docs_url="/v1/docs")
+    app = FastAPI(title="Aurora backend", version="1", docs_url="/v1/docs", lifespan=lifespan)
+    app.state.exports = export_manager
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="frontend-assets")
 
     @app.get("/", include_in_schema=False)
@@ -510,6 +533,57 @@ def create_app(
             },
             spans[0].init_time,
         )
+
+    @app.post("/v1/export", status_code=202)
+    def create_export(body: ExportRequest) -> JSONResponse:
+        """Поставить устойчивую выгрузку прогноза в очередь (полоса 3)."""
+        run = _run(store)
+        layer = _must_exist(run / "coarse", "coarse")
+        spans = read.coverage(run)
+        if not spans:
+            raise ApiError(503, "no_layer", "в прогоне нет читаемого слоя")
+        spec = exports.Spec(
+            tuple(body.vars), body.bbox, body.start, body.to, body.stride, body.format
+        )
+        try:
+            job = export_manager.submit(
+                layer, spec, source=FORECAST_SOURCE, init_time=spans[0].init_time
+            )
+        except ValueError as error:
+            raise ApiError(400, "bad_export", str(error)) from error
+        # TestClient без context manager не вызывает lifespan; lazy start также
+        # делает очередь рабочей в таком ASGI-хосте, не меняя durability.
+        export_manager.start()
+        return JSONResponse(
+            status_code=202,
+            content={
+                "job_id": job.job_id,
+                "status": job.status,
+                "poll": f"/v1/export/{job.job_id}",
+            },
+        )
+
+    @app.get("/v1/export/{job_id}")
+    def export_status(job_id: str) -> JSONResponse:
+        try:
+            job = export_manager.lookup(job_id)
+        except exports.ExpiredError as error:
+            raise ApiError(410, "export_expired", f"export {job_id} expired") from error
+        except LookupError as error:
+            raise ApiError(404, "export_not_found", f"export {job_id} not found") from error
+        return JSONResponse(content=dict(exports.public(job)))
+
+    @app.get("/v1/export/{job_id}/download", response_class=FileResponse)
+    def download_export(job_id: str) -> FileResponse:
+        try:
+            artifact = export_manager.artifact(job_id)
+        except exports.ExpiredError as error:
+            raise ApiError(410, "export_expired", f"export {job_id} expired") from error
+        except exports.NotReadyError as error:
+            raise ApiError(404, "export_not_ready", f"export {job_id} is not ready") from error
+        except LookupError as error:
+            raise ApiError(404, "export_not_found", f"export {job_id} not found") from error
+        return FileResponse(artifact, media_type="application/zip", filename=artifact.name)
 
     @app.get("/v1/health")
     def health() -> JSONResponse:
